@@ -33,4 +33,3 @@
     'Highlight a REG and press Alt + R.'
   );
 })();
-</script>
