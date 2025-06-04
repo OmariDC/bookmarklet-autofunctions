@@ -30,7 +30,7 @@
 
   // Notify the user that the hotkey has been installed
   alert(
-    'Stellantis REG hotkey installed.\n\n' +
+    'REG hotkey installed.\n\n' +
     'Highlight a REG and press Alt + R.'
   );
 })();
