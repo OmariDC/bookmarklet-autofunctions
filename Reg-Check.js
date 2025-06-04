@@ -1,4 +1,3 @@
-<script>
 (function() {
   // Base URL for Stellantis &You used-vehicles lookup
   const CHECKER_BASE =
