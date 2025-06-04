@@ -5,33 +5,31 @@
   const BADGE_COLOR = '#040134';
   const BADGE_BORDER_COLOR = '#000';
 
-  let autoAcceptObserver = null;
+  let observer = null;
   let hotkeyRegistered = false;
 
-  function getRandomDelay() {
+  function getDelay() {
     return 200 + Math.random() * 1300;
   }
 
-  function enableAutoAccept() {
-    if (autoAcceptObserver) return;
-
-    autoAcceptObserver = new MutationObserver(() => {
-      const button = document.querySelector(BUTTON_SELECTOR);
-      if (button && !button.disabled && !button.dataset.lpClicked) {
+  function enable() {
+    if (observer) return;
+    observer = new MutationObserver(() => {
+      const b = document.querySelector(BUTTON_SELECTOR);
+      if (b && !b.disabled && !b.dataset.clicked) {
         setTimeout(() => {
-          button.click();
-          button.dataset.lpClicked = 'true';
-        }, getRandomDelay());
+          b.click();
+          b.dataset.clicked = '1';
+        }, getDelay());
       }
     });
-
-    autoAcceptObserver.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true });
 
     let badge = document.getElementById(BADGE_ID);
     if (!badge) {
       badge = document.createElement('div');
       badge.id = BADGE_ID;
-      badge.onclick = toggleAutoAccept;
+      badge.onclick = toggle;
       document.body.appendChild(badge);
     }
     Object.assign(badge.style, {
@@ -51,22 +49,19 @@
     console.info('Auto-accept ON');
   }
 
-  function disableAutoAccept() {
-    if (autoAcceptObserver) {
-      autoAcceptObserver.disconnect();
-      autoAcceptObserver = null;
+  function disable() {
+    if (observer) {
+      observer.disconnect();
+      observer = null;
     }
     const badge = document.getElementById(BADGE_ID);
     if (badge) badge.remove();
     console.info('Auto-accept OFF');
   }
 
-  function toggleAutoAccept() {
-    if (autoAcceptObserver) {
-      disableAutoAccept();
-    } else {
-      enableAutoAccept();
-    }
+  function toggle() {
+    if (observer) disable();
+    else enable();
   }
 
   function registerHotkey() {
@@ -75,12 +70,12 @@
       if (e.altKey && e.code === 'KeyX') {
         e.preventDefault();
         e.stopPropagation();
-        toggleAutoAccept();
+        toggle();
       }
     });
     hotkeyRegistered = true;
   }
 
-  toggleAutoAccept();
+  toggle();
   registerHotkey();
 })();
