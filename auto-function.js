@@ -1,12 +1,13 @@
 (function autocorrectAndLogUnknowns_v5() {
         // 1. Dictionary: correct → [misspellings]
         const DICT = {
-                'Peugeot': ['peugot'],
-                'Citroën': ['citroen', 'citreon'],
-                'Vauxhall': ['vauxel'],
-                'Jeep': ['jepp', 'jeap'],
+                'Peugeot': ['peugot', 'peugeut', 'peuguot', 'pegeot', 'pugeot', 'peugoet', 'peugeoet', 'pegueot'],
+                'Citroën': ['citroen', 'citreon', 'citroean', 'citroan', 'citroin', 'citoren', 'citroem'],
+                'Vauxhall': ['vauxel', 'vauxall', 'vaxhall', 'vauxhal', 'vaulxhall', 'vauxheel'],
+                'Jeep': ['jepp', 'jeap', 'jepe', 'jep'],
                 'Fiat': ['fiatt', 'fiadt'],
-                'Abarth': ['abart'],
+                'Abarth': ['abart', 'abarht', 'abarth?']
+                'Alfa Romeo': ['alfaromeo', 'alpha romeo', 'alfa romo', 'alfaromeo', 'alfa romieo', 'alf aromeo', 'alpharomeo', 'alfa romio', 'alfa romero', 'alfa romeao', 'alfa romeo', 'alfa romeo', 'alfar omeo', 'alfa romeo', 'alfa romeo', 'alfaromeoo', 'alfa romeeo', 'alfa rome0', 'alfa r omeo', 'alfa romeo']
                 'DS Automobiles': ['ds automoblies', 'ds automobils', 'ds autom'],
                 'DS': ['ds', 'd.s.'],
                 'Leapmotor': ['leap motor', 'leapmotors'],
@@ -27,7 +28,7 @@
                 'Leicester': ['lester', 'leister', 'liestter'],
                 'Liverpool': ['liverpol', 'liverpoool', 'liverpoll'],
                 'Maidstone': ['maidston', 'maidstoen', 'maidstoon'],
-                'Manchester': ['manchestor', 'manchster', 'mannchester'],
+                'Manchester': ['manchestor', 'manchster', 'mannchester','manny'],
                 'Newport': ['new port', 'newpport', 'newprot'],
                 'Nottingham': ['nottingam', 'nottinghum', 'nothtingham'],
                 'Preston': ['prestan', 'prestron', 'prestonn'],
@@ -66,8 +67,10 @@
                 add: ['ad', 'a dd'],
                 address: ['adress', 'adresss', 'adrs'],
                 advise: ['advice', 'advise'],
-                agents: ['agnts','agant','agantes'],
+                agent: ['agnt','agant'],
+                agents: ['agnts','agantS','agantes'],
                 all: ['al', 'a ll'],
+                along: ['alng', 'alogn'],
                 am: ['ma', 'a m'],
                 an: ['na', 'a n'],
                 and: ['adn', 'an d', 'snd', 'se nd'],
@@ -175,6 +178,7 @@
                 so: ['os', 's o'],
                 'so I': ['so i'],
                 'so much':['sm'],
+                something:['smt'],
                 specific: ['spefic', 'specfic'],
                 sure: ['sur','shure'],
                 test: ['tset', 'te st'],
