@@ -242,6 +242,7 @@
                 you: ['yo', 'yuo', 'u'],
                 your: ['uour', 'ur'],
                 yourself: ['yourslef', 'yourse lf'],
+                '?':['>'],
             },
             FLAT = {},
             // Will hold { key: lowercase multi-word or multi-word misspelling, correct: canonical form }
