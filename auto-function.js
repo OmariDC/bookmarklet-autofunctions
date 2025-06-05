@@ -1,8 +1,8 @@
 (function autocorrectAndLogUnknowns_v5() {
         // 1. Dictionary: correct → [misspellings]
         const DICT = {
-                'Abarth': ['abart', 'abarht', 'abarth?']
-                'Alfa Romeo': ['alfaromeo', 'alpha romeo', 'alfa romo', 'alfaromeo', 'alfa romieo', 'alf aromeo', 'alpharomeo', 'alfa romio', 'alfa romero', 'alfa romeao', 'alfa romeo', 'alfa romeo', 'alfar omeo', 'alfa romeo', 'alfa romeo', 'alfaromeoo', 'alfa romeeo', 'alfa rome0', 'alfa r omeo', 'alfa romeo']
+                'Abarth': ['abart', 'abarht', 'abarth?'],
+                'Alfa Romeo': ['alfaromeo', 'alpha romeo', 'alfa romo', 'alfaromeo', 'alfa romieo', 'alf aromeo', 'alpharomeo', 'alfa romio', 'alfa romero', 'alfa romeao', 'alfa romeo', 'alfa romeo', 'alfar omeo', 'alfa romeo', 'alfa romeo', 'alfaromeoo', 'alfa romeeo', 'alfa rome0', 'alfa r omeo', 'alfa romeo'],
                 'Citroën': ['citroen', 'citreon', 'citroean', 'citroan', 'citroin', 'citoren', 'citroem'],
                 'DS': ['ds', 'd.s.'],
                 'DS Automobiles': ['ds automoblies', 'ds automobils', 'ds autom'],
@@ -63,7 +63,7 @@
                 'October': ['octobr', 'octuber', 'otcober'],
                 'November': ['novemberr', 'noovember', 'novembar'],
                 'December': ['decemberr', 'decembar', 'decmeber'],
-                able: ['abl', 'ab le'],
+                'able': ['abl','ab le'],
                 add: ['ad', 'a dd'],
                 address: ['adress', 'adresss', 'adrs'],
                 advise: ['advice', 'advise'],
@@ -136,7 +136,7 @@
                 how: ['hw', 'hwo'],
                 however: ['hovewer', 'howeer', 'howerver'],
                 'if': ['fi', 'i f'],
-                "I'm":['im']
+                "I'm":['im'],
                 immediate: ['immediat', 'immediatly'],
                 'in': ['ni', 'i n'],
                 information: ['informtion', 'infromation', 'informaiton'],
@@ -146,7 +146,7 @@
                 issue: ['issuse', 'isssue', 'isue'],
                 is: ['si', 'i s'],
                 it: ['ut'],
-                "i’ve": ['ive'],
+                "i've": ['ive'],
                 just: ['jst', 'ju st'],
                 local: ['locl', 'loca'],
                 looking: ['loking', 'lookng', 'lookin'],
@@ -180,7 +180,7 @@
                 price: ['prcie', 'prce'],
                 problem: ['probelm', 'proble'],
                 previously: ['prevously', 'previoiusly'],
-                purchase: ['purchase'],
+                purchase: ['purches','purchace','pursch'],
                 potential: ['potental', 'potentail'],
                 quarter: ['quater', 'quartre', 'qarter'],
                 receive: ['recieve', 'recive'],
@@ -218,7 +218,6 @@
                 today: ['tody', 'todday', 'tdy'],
                 tomorrow: ['tommorow', 'tomorow', 'tmr'],
                 transmission: ['transmision', 'trasmission'],
-                tuesday: ['tueday', 'tuesay', 'tueseday'],
                 type: ['tpe', 'ty pe'],
                 unavailable: ['unavaible', 'unavalible'],
                 "unfortunately": ['unfortunetly', 'unfortunatly'],
