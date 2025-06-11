@@ -360,27 +360,34 @@
                 const rest = div.innerText.slice(textUpToCursor.length);
                 const lowT = t.toLowerCase();
 
-                // 5d) Multi-word corrections (misspellings & correct forms containing spaces)
+                // 5d) Multi-word corrections with sentence-start capitalization
                 for (const { key: phrase, correct } of MULTI_PHRASES) {
-                    // Match phrase at the very end of t, possibly with a trailing .,!? before the delimiter
-                    const m = lowT.match(new RegExp(`(${phrase})([.,!?])?$`));
+                    const regex = new RegExp(`(${phrase})([.,!?])?$`);
+                    const m = lowT.match(regex);
                     if (m) {
                         const punct = m[2] || '';
                         const phraseLen = phrase.length + (punct ? 1 : 0);
-
-                        // Build the corrected text:
-                        //   newT = everything before that phrase + the canonical correct form + any punctuation
-                        const newT = t.slice(0, -phraseLen) + correct + punct;
-
-                        // Reassemble full text directly into innerText:
+                
+                        // Detect if this phrase is at the start of a sentence:
+                        let prevIdx = t.length - phraseLen - 1;
+                        while (prevIdx >= 0 && /\s/.test(t.charAt(prevIdx))) {
+                            prevIdx--;
+                        }
+                        const atStart = prevIdx < 0 || /[.!?]/.test(t.charAt(prevIdx));
+                
+                        // Capitalize if at sentence start
+                        const base = atStart
+                            ? correct.charAt(0).toUpperCase() + correct.slice(1)
+                            : correct;
+                
+                        // Build and reinsert corrected text:
+                        const newT = t.slice(0, -phraseLen) + base + punct;
                         div.innerText = newT + delimiter + rest;
-
-                        // Place the caret immediately after newT + delimiter
                         setCaretPosition(div, newT.length + 1);
                         return;
                     }
                 }
-
+                    
                 // 5e) Single-word correction / logging: find the last "token" before delimiter
                 const tokens = t.split(/(\s+)/);
                 let idx = -1;
