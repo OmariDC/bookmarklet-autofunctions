@@ -9,7 +9,7 @@
   let hotkeyRegistered = false;
 
   function getDelay() {
-    return 600 + Math.random() * 900;
+    return 475 + Math.random() * 1015;
   }
 
   function enable() {
