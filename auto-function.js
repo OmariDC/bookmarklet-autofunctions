@@ -482,3 +482,33 @@
             err => console.error('Failed to copy: ', err)
         );
     };
+
+        // Global > to ? replacement for all input, textarea, and contenteditable elements
+        function replaceGreaterThanWithQuestion(event) {
+            const t = event.target;
+            if (
+                t instanceof HTMLInputElement ||
+                t instanceof HTMLTextAreaElement ||
+                t.isContentEditable
+            ) {
+                let value, setValue;
+                if (t.value !== undefined) {
+                    value = t.value;
+                    setValue = v => { t.value = v; };
+                } else if (t.isContentEditable) {
+                    value = t.innerText;
+                    setValue = v => { t.innerText = v; };
+                }
+                if (value && value.includes('>')) {
+                    const newValue = value.replace(/>/g, '?');
+                    setValue(newValue);
+        
+                    // Optional: Move caret to end for input/textarea
+                    if (t.selectionStart !== undefined && t.selectionEnd !== undefined) {
+                        const pos = t.value.length;
+                        t.setSelectionRange(pos, pos);
+                    }
+                }
+            }
+        }
+        document.addEventListener('input', replaceGreaterThanWithQuestion, true);
