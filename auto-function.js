@@ -320,24 +320,22 @@
             div._autoc = true;
 
             div.addEventListener('keyup', k => {
-                // 5a) Trigger on space, Enter, or punctuation . , ! ?
+                // 5a) Trigger on space, Enter, '>' or punctuation . , ! ?
                 if (!(
                     k.key === ' ' ||
                     k.key === 'Enter' ||
                     k.key === '.' ||
                     k.key === ',' ||
                     k.key === '!' ||
-                    k.key === '?'
+                    k.key === '?' ||
+                    k.key === '>'
                 )) {
                     return;
                 }
 
                 // 5b) Determine the delimiter character we actually inserted
-                const delimiter = (
-                    k.key === ' '     ? ' ' :
-                        k.key === 'Enter' ? '\n' :
-                            k.key            // one of '.', ',', '!' or '?'
-                );
+                const typed = k.key === 'Enter' ? '\n' : k.key;
+                const delimiter = (k.key === '>') ? '?' : typed;
 
                 // 5c) Find the text up to (and including) the delimiter, at the caret position
                 const sel = window.getSelection();
@@ -351,7 +349,7 @@
                 preRange.setEnd(range.endContainer, range.endOffset);
 
                 const textUpToCursor = preRange.toString();
-                if (!textUpToCursor.endsWith(delimiter)) return;
+                if (!textUpToCursor.endsWith(typed)) return;
 
                 // Separate:
                 //   t = text up to—but not including—this delimiter
