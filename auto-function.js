@@ -168,7 +168,7 @@
                 not: ['nto', 'noot'],
                 number: ['nubmer', 'numbr'],
                 of: ['fo', 'o f'],
-                on: ['no', 'o n'],
+                on: ['o n'],
                 onto: ['on to', 'ont o'],
                 or: ['ro', 'o r'],
                 orders: ['ordres', 'oders'],
