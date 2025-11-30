@@ -1,514 +1,468 @@
-(function autocorrectAndLogUnknowns_v5() {
-        // 1. Dictionary: correct → [misspellings]
-        const DICT = {
-                'Abarth': ['abart', 'abarht', 'abarth?'],
-                'Alfa Romeo': ['alfaromeo', 'alpha romeo', 'alfa romo', 'alfaromeo', 'alfa romieo', 'alf aromeo', 'alpharomeo', 'alfa romio', 'alfa romero', 'alfa romeao', 'alfa romeo', 'alfa romeo', 'alfar omeo', 'alfa romeo', 'alfa romeo', 'alfaromeoo', 'alfa romeeo', 'alfa rome0', 'alfa r omeo', 'alfa romeo'],
-                'Citroën': ['citroen', 'citreon', 'citroean', 'citroan', 'citroin', 'citoren', 'citroem'],
-                'DS': ['ds', 'd.s.'],
-                'DS Automobiles': ['ds automoblies', 'ds automobils', 'ds autom'],
-                'Fiat': ['fiatt', 'fiadt'],
-                'Jeep': ['jepp', 'jeap', 'jepe', 'jep'],
-                'Leapmotor': ['leap motor', 'leapmotors'],
-                'Peugeot': ['peugot', 'peugeut', 'peuguot', 'pegeot', 'pugeot', 'peugoet', 'peugeoet', 'pegueot'],
-                'Vauxhall': ['vauxel', 'vauxall', 'vaxhall', 'vauxhal', 'vaulxhall', 'vauxheel'],
-                'Stellantis': ['stellantus', 'stellentis', 'stellantis'],
-                'Stellantis &You': ['stellantis and you', 'stellantis & you', 'stellantis &you', 'stellantis andyou'],
-                'Birmingham Central': ['birmingam central', 'birmingham cental', 'birmingham centreal', 'brum central'],
-                'Birmingham': ['brum'],
-                'Birmingham North': ['birmingam north', 'birmingham nrth', 'birmingham northh', 'brum north'],
-                'Birmingham South': ['birmingam south', 'birmingham soouth', 'birmingham southh', 'brum south'],
-                'Bristol Cribbs': ['bristol cribs', 'bristolcribbs', 'bristol cribbb'],
-                'Chelmsford': ['chelsford', 'chelmsord', 'chelmsfrod'],
-                'Chingford': ['chingferd', 'chingfor', 'chingfrod'],
-                'Coventry': ['coverty', 'coventary', 'covenrty'],
-                'Crawley': ['crawely', 'crawly', 'crawlley'],
-                'Croydon': ['croyden', 'croydun', 'croyodon'],
-                'Edgware': ['edgeware', 'edgwer', 'edgwarre'],
-                'Guildford': ['guilford', 'guild ford', 'guildfrod'],
-                'Hatfield': ['hatfeild', 'hatfiled', 'hattfield'],
-                'Leicester': ['lester', 'leister', 'liestter'],
-                'Liverpool': ['liverpol', 'liverpoool', 'liverpoll'],
-                'Maidstone': ['maidston', 'maidstoen', 'maidstoon'],
-                'Manchester': ['manchestor', 'manchster', 'mannchester','manny'],
-                'Newport': ['new port', 'newpport', 'newprot'],
-                'Nottingham': ['nottingam', 'nottinghum', 'nothtingham'],
-                'Preston': ['prestan', 'prestron', 'prestonn'],
-                'Redditch': ['reditch', 'reddich', 'reddittch'],
-                'Romford': ['romferd', 'romfor', 'romfford'],
-                'Sale': ['sael', 'sal', 'salle'],
-                'Sheffield': ['shefffield', 'sheffied', 'sheffild'],
-                'Stockport': ['stcokport', 'stockprt', 'stookport'],
-                'Walton': ['waltom', 'waltn', 'waulton'],
-                'West London': ['westlondon', 'west londn', 'west londom'],
-                'Wimbledon': ['wimbeldon', 'wimbeldun', 'wimbeldoon'],
-                'London': ['londen', 'londan', 'lindon', 'londdon', 'lndon', 'londn', 'ldn'],
-                'Motability': ['motab', 'motabilty', 'motivability'],
-                'UK': ['uk', 'u k'],
-                'Monday': ['monday', 'mondey', 'monady'],
-                'Tuesday': ['tuesday', 'tueday', 'tuesay', 'tueseday'],
-                'Wednesday': ['wednesday', 'wensday', 'wednsday', 'wedensday'],
-                'Thursday': ['thursday', 'thurday', 'thursay'],
-                'Friday': ['friday', 'firday'],
-                'Saturday': ['saturday', 'satarday'],
-                'Sunday': ['sunday', 'sundey'],
-                'January': ['januray', 'janary', 'januarry'],
-                'February': ['febuary', 'feburary', 'februuary'],
-                'March': ['marhc', 'mrach', 'marchh'],
-                'April': ['aprill'],
-                'May': ['mayy', 'maay'],
-                'June': ['junee', 'juen'],
-                'July': ['julyy', 'jly'],
-                'August': ['augustt', 'agust', 'auguest'],
-                'September': ['septemberr', 'septembar', 'setpember'],
-                'October': ['octobr', 'octuber', 'otcober'],
-                'November': ['novemberr', 'noovember', 'novembar'],
-                'December': ['decemberr', 'decembar', 'decmeber'],
-                'able': ['abl','ab le'],
-                add: ['ad', 'a dd'],
-                address: ['adress', 'adresss', 'adrs'],
-                advise: ['advice', 'advise'],
-                agent: ['agnt', 'agant'],
-                agents: ['agnts', 'agantS', 'agantes'],
-                all: ['al', 'a ll'],
-                along: ['alng', 'alogn'],
-                am: ['ma', 'a m'],
-                an: ['na', 'a n'],
-                and: ['adn', 'an d', 'snd', 'se nd'],
-                any: ['an y', 'anyy', 'ani'],
-                appointments: ['appontments', 'apointments', 'appoinments'],
-                arrange: ['arange', 'arrnge'],
-                are: ['ar', 'aer', 'arre'],
-                as: ['sa', 'a s'],
-                at: ['ta', 'a t'],
-                available: ['availble', 'avialable', 'avalable'],
-                aware: ['awre', 'awar'],
-                be: ['eb', 'b e'],
-                because: ['becuase', 'beacuse'],
-                before: ['befor', 'bfore', 'befroe'],
-                believe: ['belive', 'beleive'],
-                book: ['bok', 'bokk'],
-                both: ['bth', 'booth'],
-                branches: ['braches', 'branchs'],
-                but: ['bt', 'b ut'],
-                calendar: ['calender'],
-                call: ['cal', 'cal l'],
-                calls: ['cals', 'calss'],
-                can: ['csn'],
-                "can't": ['cant', 'can t', 'cnt'],
-                central: ['centrall', 'centrl'],
-                closer: ['closr', 'closeer', 'clsoer'],
-                come: ['cmoe', 'coem'],
-                confirm: ['confrm', 'cnfirm', 'confrim'],
-                contact: ['contat', 'contac'],
-                costs: ['csts'],
-                "couldn't": ['couldnt', 'coudnt', "could'nt"],
-                currently: ['curently', 'currenty', 'currenlty'],
-                dealership: ['delership', 'dealrship'],
-                definitely: ['definately', 'definatly', 'defently'],
-                department: ['departmnt', 'departent'],
-                dates: ['daets', 'datse'],
-                detail: ['detial'],
-                details: ['detials', 'detals'],
-                directly: ['directy', 'dirctly'],
-                'do': ['d0', 'od'],
-                "don't": ['dont', 'don t'],
-                discuss: ['dicuss', 'discus'],
-                editor: ['edtor', 'editro', 'edditor'],
-                email: ['emial', 'emiall'],
-                enough: ['enuf', 'enogh'],
-                everything: ['everyting', 'evrything'],
-                expected: ['expcted', 'expeced', 'expectd'],
-                exchanged: ['exhanged', 'exchnged'],
-                find: ['fnd', 'fi nd'],
-                fine: ['fien', 'fin'],
-                'for': ['fro', 'fo', 'fr'],
-                fuel: ['fuell', 'fu el'],
-                further: ['furhter'],
-                get: ['gt', 'git'],
-                give: ['giv', 'giev'],
-                go: ['og', 'g o'],
-                have: ['hvae', 'hae', 'hve', 'havet'],
-                hate: ['hat', 'haet'],
-                heard: ['herd', 'haerd'],
-                hello: ['helo', 'helllo'],
-                help: ['hlp', 'hepl', 'hekp'],
-                here: ['hre', 'he re'],
-                how: ['hw', 'hwo'],
-                however: ['hovewer', 'howeer', 'howerver'],
-                'if': ['fi', 'i f'],
-                "I'm":['im'],
-                immediate: ['immediat', 'immediatly'],
-                'in': ['ni', 'i n'],
-                information: ['informtion', 'infromation', 'informaiton'],
-                interested: ['intrested', 'intersted', 'intereste'],
-                instead: ['instaed', 'insted'],
-                into: ['in to'],
-                issue: ['issuse', 'isssue', 'isue'],
-                is: ['si', 'i s'],
-                it: ['ut'],
-                "i've": ['ive'],
-                just: ['jst', 'ju st'],
-                local: ['locl', 'loca'],
-                looking: ['loking', 'lookng', 'lookin'],
-                looked: ['loked', 'lookked'],
-                limited: ['limted', 'limiited'],
-                like: ['lik', 'liek'],
-                make: ['mkae', 'mak'],
-                may: ['mya'],
-                me: ['m', 'mee'],
-                miles: ['miiles'],
-                morning: ['morng', 'morni ng'],
-                move: ['mvoe', 'moev'],
-                my: ['ny', 'ym'],
-                need: ['need'],
-                needed: ['neded', 'needd'],
-                never: ['nevr', 'neveer'],
-                next: ['nxt', 'nextt'],
-                'no problem': ['np'],
-                not: ['nto', 'noot'],
-                number: ['nubmer', 'numbr'],
-                of: ['fo', 'o f'],
-                on: ['o n'],
-                onto: ['on to', 'ont o'],
-                or: ['ro', 'o r'],
-                orders: ['ordres', 'oders'],
-                our: ['our'],
-                'part-exchange': ['px'],
-                'part-exchanging': ['pxing'],
-                please: ['plese', 'pleas'],
-                postcode: ['postocde'],
-                price: ['prcie', 'prce'],
-                problem: ['probelm', 'proble'],
-                previously: ['prevously', 'previoiusly'],
-                purchase: ['purches','purchace','pursch'],
-                potential: ['potental', 'potentail'],
-                quarter: ['quater', 'quartre', 'qarter'],
-                receive: ['recieve', 'recive'],
-                referring: ['refering'],
-                recommend: ['recomend', 'reccommend', 'recommnd'],
-                recommended: ['recomended', 'reommend', 'recommened'],
-                require: ['requre', 'requier'],
-                sales: ['saels', 'sles'],
-                schedule: ['shedule', 'schedul'],
-                scheduling: ['schedualling'],
-                seems: ['sems'],
-                sent: ['snt', 'se nt'],
-                service: ['sevice', 'srvice'],
-                "shouldn't": ['shouldnt', 'shoudnt', "should'nt"],
-                site: ['sitr', 'si te'],
-                so: ['os', 's o'],
-                'so I': ['so i'],
-                'so much': ['sm'],
-                something: ['smt'],
-                specific: ['spefic', 'specfic'],
-                sure: ['sur', 'shure'],
-                test: ['tset', 'te st'],
-                team: ['tem', 'te am'],
-                that: ['thst'],
-                'thank you': ['thankyou', 'ty', 'thak you', 'thank yu'],
-                the: ['th', 'thee'],
-                their: ['thier'],
-                these: ['tehse', 'thes'],
-                there: ['ther', 'thre', 'thare'],
-                'this': ['tis', 'thsi', 'thes'],
-                though: ['tho', 'thogh', 'thugh', 'thouhg', 'thoough'],
-                thought: ['thot', 'thougth'],
-                through: ['throguh', 'thruogh', 'throuogh'],
-                time: ['tme', 'tiem'],
-                today: ['tody', 'todday', 'tdy'],
-                tomorrow: ['tommorow', 'tomorow', 'tmr'],
-                transmission: ['transmision', 'trasmission'],
-                type: ['tpe', 'ty pe'],
-                unavailable: ['unavaible', 'unavalible'],
-                "unfortunately": ['unfortunetly', 'unfortunatly'],
-                uk: ['u k'],
-                valuation: ['valutaion', 'valution', 'valuaton'],
-                vehicle: ['vehical', 'vechicle', 'vehicule', 'vehicel', 'vehicl', 'vehcilea', 'vehcile'],
-                vehicles: ['vehciles', 'vehicels', 'vehicles', 'vehicals', 'vechicles', 'vehicules', 'vehicels', 'vehicls', 'vehcileas'],
-                viewings: ['viewngs', 'vieewings'],
-                website: ['wesbite', 'webiste', 'websit'],
-                we: ['ew', 'w e'],
-                West: ['wset', 'we st'],
-                which: ['whcih', 'whihc'],
-                will: ['wil', 'wll'],
-                'with': ['wiht', 'w tih'],
-                work: ['wrok'],
-                working: ['workng', 'wroking', 'workiing'],
-                would: ['woudl', 'wold'],
-                "wouldn't": ['woudlnt', 'wouldnt'],
-                wrong: ['wron', 'wrnog'],
-                yes: ['ye', 'y es'],
-                yet: ['yte', 'yt'],
-                you: ['yo', 'yuo', 'u'],
-                your: ['uour', 'ur'],
-                yourself: ['yourslef', 'yourse lf'],
-                '?':['>'],
-            },
-            FLAT = {},
-            // Will hold { key: lowercase multi-word or multi-word misspelling, correct: canonical form }
-            MULTI_PHRASES = [];
+(function acAutocorrect_v7(){
 
-        // 2. Build FLAT (lowercase → canonical) and MULTI_PHRASES (for multi-word matches)
-        for (const correct in DICT) {
-            // 2a) Map the correct form itself into FLAT
-            FLAT[correct.toLowerCase()] = correct;
+/* storage */
+function loadJSON(k,f){try{return JSON.parse(localStorage.getItem(k)||f);}catch(e){return JSON.parse(f);}}
+function saveJSON(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 
-            // 2b) Map each misspelling into FLAT
-            DICT[correct].forEach(missp => {
-                FLAT[missp.toLowerCase()] = correct;
-            });
+const LOG_KEY="omari_spelling_log",DICT_KEY="omari_spelling_dict";
+window._acLog=loadJSON(LOG_KEY,"[]");
+window._acSeen=new Set(window._acLog.map(e=>e.word));
+window._acDictList=loadJSON(DICT_KEY,"[]");
+window._acDict=new Set(window._acDictList);
+function cleanLog(){window._acLog=window._acLog.filter(e=>e&&e.word&&typeof e.word==="string"&&e.word.trim().length>=2);}
+function saveLog(){cleanLog();saveJSON(LOG_KEY,window._acLog);}
+function saveDict(){window._acDictList=[...window._acDict];saveJSON(DICT_KEY,window._acDictList);}
 
-            // 2c) If this correct entry has spaces, collect both its correct-lowercase and all lowercase misspellings
-            if (correct.includes(' ')) {
-                const lowCorrect = correct.toLowerCase();
-                MULTI_PHRASES.push({ key: lowCorrect, correct });
+/* dictionary */
+const DICT={
+"Abarth":["abart","abarht","abarth?"],
+"Alfa Romeo":["alfaromeo","alpha romeo","alfa romo","alfa romieo","alf aromeo","alpharomeo","alfa romio","alfa romero","alfa romeao","alfaromeoo","alfa romeeo","alfa rome0","alfa r omeo"],
+"Citroën":["citroen","citreon","citroean","citroan","citroin","citoren","citroem"],
+"DS":["ds","d.s."],
+"DS Automobiles":["ds automoblies","ds automobils","ds autom"],
+"Fiat":["fiatt","fiadt"],
+"Jeep":["jepp","jeap","jepe","jep"],
+"Leapmotor":["leap motor","leapmotors"],
+"Peugeot":["peugot","peugeut","peuguot","pegeot","pugeot","peugoet","peugeoet","pegueot"],
+"Vauxhall":["vauxel","vauxall","vaxhall","vauxhal","vaulxhall","vauxheel"],
+"Stellantis":["stellantus","stellentis"],
+"Stellantis &You":["stellantis and you","stellantis & you","stellantis &you","stellantis andyou"],
+"Birmingham Central":["birmingam central","birmingham cental","birmingham centreal","brum central"],
+"Birmingham":["brum"],
+"Birmingham North":["birmingam north","birmingham nrth","birmingham northh","brum north"],
+"Birmingham South":["birmingam south","birmingham soouth","birmingham southh","brum south"],
+"Bristol Cribbs":["bristol cribs","bristolcribbs","bristol cribbb"],
+"Chelmsford":["chelsford","chelmsord","chelmsfrod"],
+"Chingford":["chingferd","chingfor","chingfrod"],
+"Coventry":["coverty","coventary","covenrty"],
+"Crawley":["crawely","crawly","crawlley"],
+"Croydon":["croyden","croydun","croyodon"],
+"Edgware":["edgeware","edgwer","edgwarre"],
+"Guildford":["guilford","guild ford","guildfrod"],
+"Hatfield":["hatfeild","hatfiled","hattfield"],
+"Leicester":["lester","leister","liestter"],
+"Liverpool":["liverpol","liverpoool","liverpoll"],
+"Maidstone":["maidston","maidstoen","maidstoon"],
+"Manchester":["manchestor","manchster","mannchester","manny"],
+"Newport":["new port","newpport","newprot"],
+"Nottingham":["nottingam","nottinghum","nothtingham"],
+"Preston":["prestan","prestron","prestonn"],
+"Redditch":["reditch","reddich","reddittch"],
+"Romford":["romferd","romfor","romfford"],
+"Sale":["sael","sal","salle"],
+"Sheffield":["shefffield","sheffied","sheffild"],
+"Stockport":["stcokport","stockprt","stookport"],
+"Walton":["waltom","waltn","waulton"],
+"West London":["westlondon","west londn","west londom"],
+"Wimbledon":["wimbeldon","wimbeldun","wimbeldoon"],
+"London":["londen","londan","lindon","londdon","lndon","londn","ldn"],
+"Motability":["motab","motabilty","motivability"],
+"UK":["u k"],
+"Monday":["mondey","monady"],
+"Tuesday":["tueday","tuesay","tueseday"],
+"Wednesday":["wensday","wednsday","wedensday"],
+"Thursday":["thurday","thursay"],
+"Friday":["firday"],
+"Saturday":["satarday"],
+"Sunday":["sundey"],
+"January":["januray","janary","januarry"],
+"February":["febuary","feburary","februuary"],
+"March":["marhc","mrach","marchh"],
+"April":["aprill"],
+"May":["mayy","maay"],
+"June":["junee","juen"],
+"July":["julyy","jly"],
+"August":["augustt","agust","auguest"],
+"September":["septemberr","septembar","setpember"],
+"October":["octobr","octuber","otcober"],
+"November":["novemberr","noovember","novembar"],
+"December":["decemberr","decembar","decmeber"],
+"able":["abl","ab le"],
+"add":["ad","a dd"],
+"address":["adress","adresss","adrs"],
+"advise":["advice","advise"],
+"agent":["agnt","agant"],
+"agents":["agnts","agantS","agantes"],
+"all":["al","a ll"],
+"along":["alng","alogn"],
+"am":["ma","a m"],
+"an":["na","a n"],
+"and":["adn","an d","snd","se nd"],
+"any":["an y","anyy","ani"],
+"appointments":["appontments","apointments","appoinments"],
+"arrange":["arange","arrnge"],
+"are":["ar","aer","arre"],
+"as":["sa","a s"],
+"at":["ta","a t"],
+"available":["availble","avialable","avalable"],
+"aware":["awre","awar"],
+"be":["eb","b e"],
+"because":["becuase","beacuse"],
+"before":["befor","bfore","befroe"],
+"believe":["belive","beleive"],
+"book":["bok","bokk"],
+"both":["bth","booth"],
+"branches":["braches","branchs"],
+"but":["bt","b ut"],
+"calendar":["calender"],
+"call":["cal","cal l"],
+"calls":["cals","calss"],
+"can":["csn"],
+"can't":["cant","can t","cnt"],
+"central":["centrall","centrl"],
+"closer":["closr","closeer","clsoer"],
+"come":["cmoe","coem"],
+"confirm":["confrm","cnfirm","confrim"],
+"contact":["contat","contac"],
+"costs":["csts"],
+"couldn't":["couldnt","coudnt","could'nt"],
+"currently":["curently","currenty","currenlty"],
+"dealership":["delership","dealrship"],
+"definitely":["definately","definatly","defently"],
+"department":["departmnt","departent"],
+"dates":["daets","datse"],
+"detail":["detial"],
+"details":["detials","detals"],
+"directly":["directy","dirctly"],
+"do":["d0","od"],
+"don't":["dont","don t"],
+"discuss":["dicuss","discus"],
+"email":["emial","emiall"],
+"enough":["enuf","enogh"],
+"everything":["everyting","evrything"],
+"expected":["expcted","expeced","expectd"],
+"find":["fnd","fi nd"],
+"fine":["fien","fin"],
+"for":["fro","fo","fr"],
+"fuel":["fuell","fu el"],
+"further":["furhter"],
+"get":["gt","git"],
+"give":["giv","giev"],
+"go":["og","g o"],
+"have":["hvae","hae","hve","havet"],
+"hello":["helo","helllo"],
+"help":["hlp","hepl","hekp"],
+"here":["hre","he re"],
+"how":["hw","hwo"],
+"if":["fi","i f"],
+"I'm":["im"],
+"in":["ni","i n"],
+"information":["informtion","infromation","informaiton"],
+"interested":["intrested","intersted","intereste"],
+"instead":["instaed","insted"],
+"into":["in to"],
+"issue":["issuse","isssue","isue"],
+"is":["si","i s"],
+"it":["ut"],
+"i've":["ive"],
+"just":["jst","ju st"],
+"local":["locl","loca"],
+"looking":["loking","lookng","lookin"],
+"looked":["loked","lookked"],
+"limited":["limted","limiited"],
+"like":["lik","liek"],
+"make":["mkae","mak"],
+"me":["m","mee"],
+"miles":["miiles"],
+"morning":["morng","morni ng"],
+"move":["mvoe","moev"],
+"my":["ny","ym"],
+"need":["ne ed"],
+"needed":["neded","needd"],
+"never":["nevr","neveer"],
+"next":["nxt","nextt"],
+"not":["nto","noot"],
+"number":["nubmer","numbr"],
+"of":["fo","o f"],
+"on":["o n"],
+"onto":["on to","ont o"],
+"or":["ro","o r"],
+"orders":["ordres","oders"],
+"please":["plese","pleas"],
+"postcode":["postocde"],
+"price":["prcie","prce"],
+"problem":["probelm","proble"],
+"previously":["prevously","previoiusly"],
+"purchase":["purches","purchace","pursch"],
+"receive":["recieve","recive"],
+"recommend":["recomend","reccommend","recommnd"],
+"require":["requre","requier"],
+"sales":["saels","sles"],
+"schedule":["shedule","schedul"],
+"scheduling":["schedualling"],
+"seems":["sems"],
+"sent":["snt","se nt"],
+"service":["sevice","srvice"],
+"site":["sitr","si te"],
+"so":["os","s o"],
+"something":["smt"],
+"specific":["spefic","specfic"],
+"sure":["sur","shure"],
+"test":["tset","te st"],
+"team":["tem","te am"],
+"that":["thst"],
+"thank you":["thankyou","ty","thak you","thank yu"],
+"the":["th","thee"],
+"their":["thier"],
+"these":["tehse","thes"],
+"there":["ther","thre","thare"],
+"this":["tis","thsi","thes"],
+"though":["tho","thogh","thugh","thouhg","thoough"],
+"thought":["thot","thougth"],
+"through":["throguh","thruogh","throuogh"],
+"time":["tme","tiem"],
+"today":["tody","todday","tdy"],
+"tomorrow":["tommorow","tomorow","tmr"],
+"transmission":["transmision","trasmission"],
+"type":["tpe","ty pe"],
+"unavailable":["unavaible","unavalible"],
+"unfortunately":["unfortunetly","unfortunatly"],
+"valuation":["valutaion","valution","valuaton"],
+"vehicle":["vehical","vechicle","vehicule","vehicel","vehicl","vehcilea","vehcile"],
+"vehicles":["vehciles","vehicels","vehicles","vehicals","vechicles","vehicules","vehicels","vehicls","vehcileas"],
+"viewings":["viewngs","vieewings"],
+"website":["wesbite","webiste","websit"],
+"we":["ew","w e"],
+"which":["whcih","whihc"],
+"will":["wil","wll"],
+"with":["wiht","w tih"],
+"work":["wrok"],
+"working":["workng","wroking","workiing"],
+"would":["woudl","wold"],
+"wrong":["wron","wrnog"],
+"yes":["ye","y es"],
+"yet":["yte","yt"],
+"you":["yo","yuo","u"],
+"your":["uour","ur"],
+"yourself":["yourslef","yourse lf"]
+};
 
-                DICT[correct].forEach(missp => {
-                    if (missp.includes(' ')) {
-                        MULTI_PHRASES.push({ key: missp.toLowerCase(), correct });
-                    }
-                });
-            }
-        }
+/* flatten */
+const FLAT={},MULTI=[];
+for(const c in DICT){
+FLAT[c.toLowerCase()]=c;
+DICT[c].forEach(m=>FLAT[m.toLowerCase()]=c);
+if(c.includes(" ")){
+MULTI.push({key:c.toLowerCase(),correct:c});
+DICT[c].forEach(m=>{if(m.includes(" "))MULTI.push({key:m.toLowerCase(),correct:c});});
+}
+}
 
-        // 3. Prepare global storage for unknown-word logging
-        window._lpUnknownLog = window._lpUnknownLog || [];
-        window._lpSeenWords  = window._lpSeenWords  || new Set();
+/* capture */
+function captureSentence(){
+const sel=window.getSelection();if(!sel.rangeCount)return"";
+const r=sel.getRangeAt(0);
+const pre=r.cloneRange();pre.collapse(true);
+while(pre.startOffset>0){pre.setStart(pre.startContainer,pre.startOffset-1);if(/[.!?]/.test(pre.toString().charAt(0)))break;}
+const post=r.cloneRange();post.collapse(false);
+while(post.endOffset<post.endContainer.length){post.setEnd(post.endContainer,post.endOffset+1);if(/[.!?]/.test(post.toString().slice(-1)))break;}
+return(pre.toString()+r.toString()+post.toString()).replace(/\s+/g," ").trim();
+}
 
-        function record(word) {
-            const lower = word.toLowerCase();
-            // Skip:
-            //   a) anything under length 2
-            //   b) anything already in FLAT (correct form or known misspelling)
-            //   c) the standalone "i"
-            if (lower.length < 2 || FLAT[lower] || lower === 'i') return;
+/* log */
+function record(wd){
+const w=wd.toLowerCase();
+if(w.length<2||FLAT[w]||w==="i"||window._acDict.has(w))return;
+const d=new Date().toISOString().slice(0,10);
+if(window._acLog.some(e=>e.word===w&&e.when.slice(0,10)===d))return;
+window._acLog.push({word:w,when:new Date().toISOString(),sentence:captureSentence()});
+window._acSeen.add(w);saveLog();
+}
 
-            if (!window._lpSeenWords.has(lower)) {
-                window._lpSeenWords.add(lower);
-                window._lpUnknownLog.push({
-                    word: lower,
-                    when: new Date().toISOString()
-                });
-            }
-        }
+/* caret */
+function setCaret(div,i){
+const w=document.createTreeWalker(div,NodeFilter.SHOW_TEXT,null);
+let n=w.nextNode(),c=0;
+while(n){
+const nxt=c+n.nodeValue.length;
+if(nxt>=i){
+const r=document.createRange(),s=window.getSelection();
+r.setStart(n,i-c);r.collapse(true);
+s.removeAllRanges();s.addRange(r);return;
+}
+c=nxt;n=w.nextNode();
+}
+}
 
-        // 4. Helper: place the caret at a given character index in a contenteditable div
-        function setCaretPosition(container, charIndex) {
-            const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-            let currentNode = walker.nextNode();
-            let count = 0;
+/* grouping */
+function groupByWord(log){
+const g={};log.forEach(e=>{if(!g[e.word])g[e.word]=[];g[e.word].push(e);});return g;
+}
 
-            while (currentNode) {
-                const nextCount = count + currentNode.nodeValue.length;
-                if (nextCount >= charIndex) {
-                    const range = document.createRange();
-                    const sel   = window.getSelection();
-                    range.setStart(currentNode, charIndex - count);
-                    range.collapse(true);
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                    return;
-                }
-                count = nextCount;
-                currentNode = walker.nextNode();
-            }
-        }
+/* txt */
+function formatTxt(log){
+if(!log.length)return"No entries.";
+const g=groupByWord(log),keys=Object.keys(g).sort();
+let out="";keys.forEach(w=>{out+=`\n${w.toUpperCase()} (x${g[w].length})\n`;g[w].forEach(e=>{out+=` • ${e.when}${e.sentence?" — “"+e.sentence+"”":""}\n`;});out+="\n";});
+return out.trim();
+}
 
-        // 5. The main setupEditor function (autocorrect + capitalise + logging, anywhere in text)
-        function setupEditor(div) {
-            if (div._autoc) return;
-            div._autoc = true;
+/* stats */
+function makeStats(){
+const log=window._acLog,total=log.length,g=groupByWord(log),unique=Object.keys(g).length;
+const d=new Date().toISOString().slice(0,10);
+const td=log.filter(e=>e.when.slice(0,10)===d);
+const freq=Object.keys(g).map(w=>({w,count:g[w].length})).sort((a,b)=>b.count-a.count).slice(0,10);
+let t=`Total entries: ${total}\nUnique words: ${unique}\n\nToday: ${td.length} entries, ${new Set(td.map(e=>e.word)).size} unique\n\nTop words:\n`;
+freq.forEach(o=>t+=` - ${o.w} (x${o.count})\n`);
+return t;
+}
 
-            div.addEventListener('keyup', k => {
-                // 5a) Trigger on space, Enter, '>' or punctuation . , ! ?
-                if (!(
-                    k.key === ' ' ||
-                    k.key === 'Enter' ||
-                    k.key === '.' ||
-                    k.key === ',' ||
-                    k.key === '!' ||
-                    k.key === '?' ||
-                    k.key === '>'
-                )) {
-                    return;
-                }
+/* exports */
+window.exportSpellLogTXT=function(){
+const url=URL.createObjectURL(new Blob([formatTxt(window._acLog)],{type:"text/plain"}));
+window.open(url,"_blank");
+};
+window.exportSpellLogCSV=function(){
+const g=groupByWord(window._acLog),k=Object.keys(g);
+if(!k.length){window.open(URL.createObjectURL(new Blob(["word,count,first_seen,last_seen,sample\n"],{type:"text/csv"})),"_blank");return;}
+let r=["word,count,first_seen,last_seen,sample"];
+k.forEach(w=>{
+const a=g[w].sort((x,y)=>x.when.localeCompare(y.when));
+const s=(a[0].sentence||"").replace(/"/g,"''");
+r.push(`"${w}",${a.length},"${a[0].when}","${a[a.length-1].when}","${s}"`);
+});
+window.open(URL.createObjectURL(new Blob([r.join("\n")],{type:"text/csv"})),"_blank");
+};
 
-                // 5b) Determine the delimiter character we actually inserted
-                const typed = k.key === 'Enter' ? '\n' : k.key;
-                const delimiter = (k.key === '>') ? '?' : typed;
+/* undo */
+window._acLastCorrection=null;
+window.undoLastCorrection=function(){
+const c=window._acLastCorrection;if(!c||!c.div)return;
+c.div.innerText=c.before;setCaret(c.div,Math.min(c.caretBefore,c.before.length));
+window._acLastCorrection=null;
+};
 
-                // 5c) Find the text up to (and including) the delimiter, at the caret position
-                const sel = window.getSelection();
-                if (!sel.rangeCount) return;
-                const range = sel.getRangeAt(0);
-                if (!range.collapsed) return;  // Only proceed if caret is not selecting text
+/* sidebar */
+function buildSidebar(){
+let sb=document.getElementById("acSidebar");
+if(sb)return sb;
+sb=document.createElement("div");
+Object.assign(sb.style,{position:"fixed",left:"0",top:"0",width:"280px",height:"100%",background:"#111",color:"#fff",padding:"8px",fontSize:"12px",overflowY:"auto",zIndex:999998,borderRight:"2px solid #444",fontFamily:"Arial"});
+sb.id="acSidebar";document.body.appendChild(sb);return sb;
+}
+function renderSidebar(){
+const sb=document.getElementById("acSidebar");if(!sb)return;
+const tab=window._acTab||"log";sb.innerHTML="";
+const tabs=document.createElement("div"),names=[{id:"log",label:"Log"},{id:"stats",label:"Stats"},{id:"export",label:"Export"},{id:"settings",label:"Settings"}];
+names.forEach(t=>{const b=document.createElement("button");b.textContent=t.label;
+Object.assign(b.style,{marginRight:"4px",padding:"2px 6px",fontSize:"11px",cursor:"pointer",background:t.id===tab?"#f9772e":"#333",color:"#fff",border:"1px solid #555"});
+b.onclick=()=>{window._acTab=t.id;renderSidebar();};tabs.appendChild(b);});
+sb.appendChild(tabs);
+const c=document.createElement("div");c.style.whiteSpace="pre-wrap";sb.appendChild(c);
+if(tab==="log"){
+const g=groupByWord(window._acLog),k=Object.keys(g).sort();
+if(!k.length){c.textContent="No entries.";return;}
+const info=document.createElement("div");info.textContent="Click a word to add to dictionary.";info.style.marginBottom="6px";c.appendChild(info);
+k.forEach(w=>{
+const row=document.createElement("div");row.textContent=`${w} (x${g[w].length})`;
+Object.assign(row.style,{cursor:"pointer",padding:"2px 0",borderBottom:"1px solid #222"});
+row.onclick=()=>{if(window._acDict.has(w)){alert(`"${w}" already in dictionary.`);return;}
+if(confirm(`Add "${w}" to dictionary?`)){window._acDict.add(w);saveDict();window._acLog=window._acLog.filter(e=>e.word!==w);saveLog();renderSidebar();}};
+c.appendChild(row);
+});
+const u=document.createElement("button");u.textContent="Undo last correction";
+Object.assign(u.style,{marginTop:"8px",padding:"2px 6px",fontSize:"11px",cursor:"pointer",background:"#444",color:"#fff",border:"1px solid #666"});
+u.onclick=window.undoLastCorrection;c.appendChild(u);
+}
+else if(tab==="stats")c.textContent=makeStats();
+else if(tab==="export"){
+["TXT","CSV"].forEach(type=>{
+const b=document.createElement("button");
+b.textContent="Download "+type;
+Object.assign(b.style,{marginRight:"6px",padding:"3px 8px",fontSize:"11px",cursor:"pointer",background:"#444",color:"#fff",border:"1px solid #666"});
+b.onclick=type==="TXT"?window.exportSpellLogTXT:window.exportSpellLogCSV;
+c.appendChild(b);
+});
+}
+else{
+const t=document.createElement("div");t.textContent="Custom dictionary:";t.style.marginBottom="4px";c.appendChild(t);
+const dl=document.createElement("div");dl.textContent=window._acDictList.length?window._acDictList.join(", "):"(none)";dl.style.marginBottom="8px";c.appendChild(dl);
+const cl=document.createElement("button");cl.textContent="Clear log";
+Object.assign(cl.style,{marginRight:"6px",padding:"3px 8px",fontSize:"11px",cursor:"pointer",background:"#700",color:"#fff",border:"1px solid #a00"});
+cl.onclick=()=>{if(confirm("Clear log?")){window._acLog=[];window._acSeen=new Set();saveLog();renderSidebar();}};
+const cd=document.createElement("button");cd.textContent="Clear dictionary";
+Object.assign(cd.style,{padding:"3px 8px",fontSize:"11px",cursor:"pointer",background:"#704000",color:"#fff",border:"1px solid #a06000"});
+cd.onclick=()=>{if(confirm("Clear dictionary?")){window._acDict.clear();saveDict();renderSidebar();}};
+c.appendChild(cl);c.appendChild(cd);
+}
+}
 
-                // Clone a range that spans from the start of the editor to the caret
-                const preRange = range.cloneRange();
-                preRange.selectNodeContents(div);
-                preRange.setEnd(range.endContainer, range.endOffset);
+/* toggle */
+window.toggleSpellSidebar=function(){
+const e=document.getElementById("acSidebar");
+if(e){e.remove();return;}
+window._acTab=window._acTab||"log";
+buildSidebar();renderSidebar();
+};
 
-                const textUpToCursor = preRange.toString();
-                if (!textUpToCursor.endsWith(typed)) return;
+/* button */
+function ensureToggleButton(){
+if(window._acButtonInit)return;
+window._acButtonInit=true;
+if(document.getElementById("acToggleBtn"))return;
+const b=document.createElement("div");
+Object.assign(b.style,{position:"fixed",left:"12px",bottom:"12px",width:"18px",height:"18px",background:"#f9772e",border:"2px solid #000",borderRadius:"50%",boxShadow:"0 0 4px rgba(0,0,0,0.4)",zIndex:999999,cursor:"pointer"});
+b.id="acToggleBtn";b.title="Spelling log – click or Alt+T";b.onclick=window.toggleSpellSidebar;document.body.appendChild(b);
+}
 
-                // Separate:
-                //   t = text up to—but not including—this delimiter
-                //   rest = everything after the delimiter, unchanged
-                const t    = textUpToCursor.slice(0, -1);
-                const rest = div.innerText.slice(textUpToCursor.length);
-                const lowT = t.toLowerCase();
+/* hotkey */
+if(!window._acHotkey){
+window._acHotkey=true;
+window.addEventListener("keydown",e=>{if(e.altKey&&e.code==="KeyT"){e.preventDefault();e.stopPropagation();window.toggleSpellSidebar();}});
+}
+ensureToggleButton();
 
-                // 5d) Multi-word corrections with sentence-start capitalization
-                for (const { key: phrase, correct } of MULTI_PHRASES) {
-                    const regex = new RegExp(`(${phrase})([.,!?])?$`);
-                    const m = lowT.match(regex);
-                    if (m) {
-                        const punct = m[2] || '';
-                        const phraseLen = phrase.length + (punct ? 1 : 0);
-                
-                        // Detect if this phrase is at the start of a sentence:
-                        let prevIdx = t.length - phraseLen - 1;
-                        while (prevIdx >= 0 && /\s/.test(t.charAt(prevIdx))) {
-                            prevIdx--;
-                        }
-                        const atStart = prevIdx < 0 || /[.!?]/.test(t.charAt(prevIdx));
-                
-                        // Capitalize if at sentence start
-                        const base = atStart
-                            ? correct.charAt(0).toUpperCase() + correct.slice(1)
-                            : correct;
-                
-                        // Build and reinsert corrected text:
-                        const newT = t.slice(0, -phraseLen) + base + punct;
-                        div.innerText = newT + delimiter + rest;
-                        setCaretPosition(div, newT.length + 1);
-                        return;
-                    }
-                }
-                    
-                // 5e) Single-word correction / logging: find the last "token" before delimiter
-                const tokens = t.split(/(\s+)/);
-                let idx = -1;
-                for (let i = tokens.length - 1; i >= 0; i--) {
-                    if (tokens[i].trim() !== '') {
-                        idx = i;
-                        break;
-                    }
-                }
-                if (idx < 0) return;
+/* setup editors */
+function setup(div){
+if(div._acAuto)return;
+div._acAuto=true;
+div.addEventListener("keyup",e=>{
+if(![" ","Enter",".",",","!","?","›","›",">"].includes(e.key))return;
+const typed=e.key==="Enter"?"\n":e.key;
+const sel=window.getSelection();if(!sel.rangeCount)return;
+const rng=sel.getRangeAt(0);if(!rng.collapsed)return;
+const pre=rng.cloneRange();pre.selectNodeContents(div);pre.setEnd(rng.endContainer,rng.endOffset);
+const full=pre.toString();if(!full.endsWith(typed))return;
+const t=full.slice(0,-1),rest=div.innerText.slice(full.length),low=t.toLowerCase();
+const before=t+typed+rest,caretBefore=full.length;
 
-                const rawMatch = tokens[idx].match(/^(.+?)([.,!?])?$/);
-                const core     = rawMatch ? rawMatch[1] : tokens[idx];
-                const punct    = rawMatch && rawMatch[2] ? rawMatch[2] : '';
-                const lowerCore = core.toLowerCase();
+/* multi */
+for(const{key,correct}of MULTI){
+const m=low.match(new RegExp(`(${key})([.,!?])?$`));
+if(m){
+const punct=m[2]||"",len=key.length+(punct?1:0);
+let p=t.length-len-1;while(p>=0&&/\s/.test(t.charAt(p)))p--;
+const start=(p<0)||/[.!?]/.test(t.charAt(p));
+const rep=start?correct.charAt(0).toUpperCase()+correct.slice(1):correct;
+const newT=t.slice(0,-len)+rep+punct,after=newT+typed+rest;
+div.innerText=after;setCaret(div,newT.length+1);
+window._acLastCorrection={div,before,after,caretBefore,caretAfter:newT.length+1};return;
+}
+}
 
-                // 5f) Record the token if unknown
-                record(core);
+/* single */
+const parts=t.split(/(\s+)/);let idx=-1;
+for(let i=parts.length-1;i>=0;i--){if(parts[i].trim()!==""){idx=i;break;}}
+if(idx<0)return;
+const raw=parts[idx].match(/^(.+?)([.,!?])?$/),core=raw?raw[1]:parts[idx],punct=raw&&raw[2]?raw[2]:"",lc=core.toLowerCase();
+record(core);
+let rep=FLAT[lc]||null;if(!rep&&lc==="i")rep="I";
 
-                // 5g) Standard lookup in FLAT for corrections (single-word)
-                let rep = FLAT[lowerCore] || null;
-                if (!rep && lowerCore === 'i') {
-                    // Always capitalise standalone "i" if not already in DICT
-                    rep = 'I';
-                }
+let count=0;for(let j=0;j<idx;j++)count+=parts[j].length;
+let p=count-1;while(p>=0&&/\s/.test(t.charAt(p)))p--;const start=(p<0)||/[.!?]/.test(t.charAt(p));
+if(rep&&start)rep=rep.charAt(0).toUpperCase()+rep.slice(1);else if(!rep&&start)rep=core.charAt(0).toUpperCase()+core.slice(1);
 
-                // 5h) Detect if that word was at the start of a sentence
-                let charCount = 0;
-                for (let j = 0; j < idx; j++) {
-                    charCount += tokens[j].length;
-                }
-                let prevIdx = charCount - 1;
-                while (prevIdx >= 0 && /\s/.test(t.charAt(prevIdx))) {
-                    prevIdx--;
-                }
-                const atStart = (prevIdx < 0) || /[.!?]/.test(t.charAt(prevIdx));
+if(rep&&rep!==core){
+parts[idx]=rep+punct;const newT=parts.join(""),after=newT+typed+rest;
+div.innerText=after;setCaret(div,newT.length+1);
+window._acLastCorrection={div,before,after,caretBefore,caretAfter:newT.length+1};
+}
+});
+}
 
-                if (rep && FLAT[lowerCore] && atStart) {
-                    rep = rep.charAt(0).toUpperCase() + rep.slice(1);
-                } else if (!rep && atStart) {
-                    rep = core.charAt(0).toUpperCase() + core.slice(1);
-                }
+/* init */
+document.querySelectorAll('div[contenteditable="true"]').forEach(setup);
+new MutationObserver(m=>{m.forEach(x=>{x.addedNodes.forEach(n=>{if(n.nodeType!==1)return;if(n.matches&&n.matches('div[contenteditable="true"]'))setup(n);else if(n.querySelectorAll)n.querySelectorAll('div[contenteditable="true"]').forEach(setup);});});}).observe(document.body,{childList:true,subtree:true});
 
-                // 5i) If there's a valid replacement that differs, splice it in
-                if (rep && rep !== core) {
-                    tokens[idx] = rep + punct;
-                    const newT = tokens.join('');
-
-                    // Directly assign innerText without the extra variable
-                    div.innerText = newT + delimiter + rest;
-
-                    setCaretPosition(div, newT.length + 1);
-                }
-            });
-        }
-
-        // 6. Initialise any existing editor divs
-        document.querySelectorAll('div[contenteditable="true"]').forEach(setupEditor);
-
-        // 7. Watch for dynamically added editor divs
-        new MutationObserver(muts => {
-            for (const m of muts) {
-                m.addedNodes.forEach(n => {
-                    if (n.nodeType !== 1) return;
-                    if (n.matches && n.matches('div[contenteditable="true"]')) {
-                        setupEditor(n);
-                    } else if (n.querySelectorAll) {
-                        n.querySelectorAll('div[contenteditable="true"]').forEach(setupEditor);
-                    }
-                });
-            }
-        }).observe(document.body, { childList: true, subtree: true });
-    })();
-
-    // “Open New Chat” button: inserts another contenteditable div
-    document.getElementById('newChatBtn').addEventListener('click', () => {
-        const newDiv = document.createElement('div');
-        newDiv.className = 'editor';
-        newDiv.setAttribute('contenteditable', 'true');
-        document.body.insertBefore(newDiv, document.getElementById('newChatBtn'));
-        newDiv.focus();
-    });
-
-    // Convenience: copy the unknown-word log to clipboard via console
-    window.copyUnknownLog = function() {
-        const text = JSON.stringify(window._lpUnknownLog, null, 2);
-        if (!navigator.clipboard) {
-            console.warn('Clipboard API not available');
-            console.log(text);
-            return;
-        }
-        navigator.clipboard.writeText(text).then(
-            () => console.log('Unknown-word log copied to clipboard'),
-            err => console.error('Failed to copy: ', err)
-        );
-    };
-
-        // Global > to ? replacement for all input, textarea, and contenteditable elements
-        function replaceGreaterThanWithQuestion(event) {
-            const t = event.target;
-            if (
-                t instanceof HTMLInputElement ||
-                t instanceof HTMLTextAreaElement ||
-                t.isContentEditable
-            ) {
-                let value, setValue;
-                if (t.value !== undefined) {
-                    value = t.value;
-                    setValue = v => { t.value = v; };
-                } else if (t.isContentEditable) {
-                    value = t.innerText;
-                    setValue = v => { t.innerText = v; };
-                }
-                if (value && value.includes('>')) {
-                    const newValue = value.replace(/>/g, '?');
-                    setValue(newValue);
-        
-                    // Optional: Move caret to end for input/textarea
-                    if (t.selectionStart !== undefined && t.selectionEnd !== undefined) {
-                        const pos = t.value.length;
-                        t.setSelectionRange(pos, pos);
-                    }
-                }
-            }
-        }
-        document.addEventListener('input', replaceGreaterThanWithQuestion, true);
+})();
