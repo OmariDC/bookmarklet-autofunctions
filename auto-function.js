@@ -320,6 +320,66 @@
     window._acCanonicalList=Array.from(canonSet).sort((a,b)=>a.localeCompare(b));
   }
   rebuildMaps();
+  /* --- DICTIONARY SELF-REPAIR PATCH v1 --- */
+function acHealDictionaries(){
+  let changed=false;
+
+  // 1. Dedupe + clean list
+  if(window._acDictList){
+    const newList=Array.from(new Set(window._acDictList.filter(w=>w&&w.trim().length>1))).sort();
+    if(JSON.stringify(newList)!==JSON.stringify(window._acDictList)){
+      window._acDictList=newList;
+      saveDict();
+      changed=true;
+    }
+  }
+
+  // 2. Sync _acDict with list
+  if(window._acDict){
+    const set=new Set(window._acDictList);
+    if([...window._acDict].some(w=>!set.has(w))){
+      window._acDict=set;
+      saveDict();
+      changed=true;
+    }
+  }
+
+  // 3. Purge stale EXT mappings
+  if(window._acDictExt){
+    const ext=window._acDictExt;
+    let cleaned=false;
+    for(const cor in ext){
+      if(!cor || !cor.trim()){ delete ext[cor]; cleaned=true; continue; }
+      if(!FLAT[cor.toLowerCase()] && !window._acDict.has(cor)){
+        delete ext[cor];
+        cleaned=true;
+        continue;
+      }
+      ext[cor]=ext[cor].filter(m=>m && m.trim().length>1);
+    }
+    if(cleaned){ saveExt(); changed=true; }
+  }
+
+  // 4. Remove ghost FLAT & MULTI entries
+  const canon=new Set([...window._acCustomWords||[], ...Object.keys(DICT||{})]);
+  Object.keys(FLAT).forEach(k=>{
+    const v=FLAT[k];
+    if(!v || typeof v!=="string") return;
+    if(!canon.has(v) && !window._acDict.has(v)){
+      delete FLAT[k];
+      changed=true;
+    }
+  });
+
+  MULTI=MULTI.filter(m=>{
+    if(!m || !m.correct) return false;
+    if(!canon.has(m.correct) && !window._acDict.has(m.correct)) return false;
+    return true;
+  });
+
+  if(changed){ rebuildMaps(); }
+}
+acHealDictionaries();
 
   function captureSentence(){
     const sel=window.getSelection();
