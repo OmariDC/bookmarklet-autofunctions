@@ -1,3 +1,16 @@
+/* --- Auto-Version Cache Breaker --- */
+(function(){
+  const selfURL = 'https://omaridc.github.io/bookmarklet-autofunctions/auto-function.js';
+  const latestURL = selfURL + '?v=' + Date.now();
+
+  // If we're not already using a versioned URL, reload ourselves with a fresh timestamp
+  if (!location.href.includes('auto-function.js?v=')) {
+    var s = document.createElement('script');
+    s.src = latestURL;
+    document.body.appendChild(s);
+    return; // Prevent old cached version from running
+  }
+})();
 (function acAutocorrect_v8(){
   function loadJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key)||fallback);}catch(e){return JSON.parse(fallback);}}
   function saveJSON(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
