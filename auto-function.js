@@ -1,24 +1,23 @@
 (function acAutocorrect_v8(){
   function loadJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key)||fallback);}catch(e){return JSON.parse(fallback);}}
   function saveJSON(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch(e){}}
-
   const LOG_KEY="omari_spelling_log";
   const DICT_KEY="omari_spelling_dict";
   const EXT_KEY="omari_spelling_ext";
-
+  const CAPS_KEY="omari_caps_rules";
   window._acLog=loadJSON(LOG_KEY,"[]");
   window._acSeen=new Set(window._acLog.map(e=>e.word));
   window._acDictList=loadJSON(DICT_KEY,"[]");
+  window._acDictList=Array.from(new Set(window._acDictList||[]));
   window._acDict=new Set(window._acDictList);
   window._acDictExt=loadJSON(EXT_KEY,"{}");
+  window._acCaps=loadJSON(CAPS_KEY,"{}");
   window._acCanonicalList=[];
-
-  function cleanLog(){
-    window._acLog=window._acLog.filter(e=>e&&e.word&&typeof e.word==="string"&&e.word.trim().length>=2);
-  }
+  function cleanLog(){window._acLog=window._acLog.filter(e=>e&&e.word&&typeof e.word==="string"&&e.word.trim().length>=2);}
   function saveLog(){cleanLog();saveJSON(LOG_KEY,window._acLog);}
-  function saveDict(){window._acDictList=Array.from(window._acDict);saveJSON(DICT_KEY,window._acDictList);}
+  function saveDict(){window._acDictList=Array.from(new Set(window._acDict));saveJSON(DICT_KEY,window._acDictList);}
   function saveExt(){saveJSON(EXT_KEY,window._acDictExt||{});}
+  function saveCaps(){saveJSON(CAPS_KEY,window._acCaps||{});}
 
   const DICT={
     'Abarth':['abart','abarht','abarth?'],
@@ -83,10 +82,11 @@
     'October':['octobr','octuber','otcober'],
     'November':['novemberr','noovember','novembar'],
     'December':['decemberr','decembar','decmeber'],
+    'I':['i'],
     'able':['abl','ab le'],
     add:['ad','a dd'],
     address:['adress','adresss','adrs'],
-    advise:['advice','advise'],
+    advise:['adice','advice','advise'],
     agent:['agnt','agant'],
     agents:['agnts','agantS','agantes'],
     all:['al','a ll'],
@@ -241,7 +241,6 @@
     type:['tpe','ty pe'],
     unavailable:['unavaible','unavalible'],
     "unfortunately":['unfortunetly','unfortunatly'],
-    uk:['u k'],
     valuation:['valutaion','valution','valuaton'],
     vehicle:['vehical','vechicle','vehicule','vehicel','vehicl','vehcilea','vehcile'],
     vehicles:['vehciles','vehicels','vehicles','vehicals','vechicles','vehicules','vehicels','vehicls','vehcileas'],
@@ -264,6 +263,22 @@
     yourself:['yourslef','yourse lf']
   };
 
+  function ensureDefaultCaps(){
+    const caps=window._acCaps||(window._acCaps={});
+    const defaults=[
+      'Abarth','Alfa Romeo','Citroën','DS','DS Automobiles','Fiat','Jeep','Leapmotor','Peugeot','Vauxhall',
+      'Stellantis','Stellantis &You','Birmingham Central','Birmingham','Birmingham North','Birmingham South',
+      'Bristol Cribbs','Chelmsford','Chingford','Coventry','Crawley','Croydon','Edgware','Guildford','Hatfield',
+      'Leicester','Liverpool','Maidstone','Manchester','Newport','Nottingham','Preston','Redditch','Romford',
+      'Sale','Sheffield','Stockport','Walton','West London','Wimbledon','London','Motability','UK',
+      'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday',
+      'January','February','March','April','May','June','July','August','September','October','November','December'
+    ];
+    defaults.forEach(w=>{if(!Object.prototype.hasOwnProperty.call(caps,w))caps[w]=true;});
+    saveCaps();
+  }
+  ensureDefaultCaps();
+
   let FLAT={},MULTI=[];
   function rebuildMaps(){
     FLAT={};MULTI=[];
@@ -274,20 +289,21 @@
         const cLower=correct.toLowerCase();
         FLAT[cLower]=correct;
         canonSet.add(correct);
-        list.forEach(m=>{
-          const ml=m.toLowerCase();
-          FLAT[ml]=correct;
-        });
+        list.forEach(m=>{const ml=m.toLowerCase();FLAT[ml]=correct;});
         if(correct.indexOf(" ")!==-1){
           MULTI.push({key:cLower,correct});
-          list.forEach(m=>{
-            if(m.indexOf(" ")!==-1)MULTI.push({key:m.toLowerCase(),correct});
-          });
+          list.forEach(m=>{if(m.indexOf(" ")!==-1)MULTI.push({key:m.toLowerCase(),correct});});
         }
       }
     }
     applyDict(DICT);
     applyDict(window._acDictExt||{});
+    (window._acDictList||[]).forEach(w=>{
+      if(!w)return;
+      const lw=w.toLowerCase();
+      canonSet.add(w);
+      if(!FLAT[lw])FLAT[lw]=w;
+    });
     window._acCanonicalList=Array.from(canonSet).sort((a,b)=>a.localeCompare(b));
   }
   rebuildMaps();
@@ -306,7 +322,7 @@
 
   function record(word){
     const w=word.toLowerCase();
-    if(w.length<2||FLAT[w]||w==="i"||window._acDict.has(w))return;
+    if(w.length<2||FLAT[w]||window._acDict.has(w))return;
     const today=(new Date()).toISOString().slice(0,10);
     const existsToday=window._acLog.some(e=>e.word===w&&e.when.slice(0,10)===today);
     if(existsToday)return;
@@ -341,7 +357,7 @@
     keys.forEach(w=>{
       const arr=g[w];
       out+=`\n${w.toUpperCase()}  (x${arr.length})\n`;
-      arr.forEach(e=>{out+=`   • ${e.when}${e.sentence?" — “"+e.sentence+"”":""}\n`;});
+      arr.forEach(e=>{out+=`   • ${e.when}${e.sentence?" - \""+e.sentence+"\"":""}\n`;});
       out+="\n";
     });
     return out.trim();
@@ -475,19 +491,16 @@
       transition:"transform 0.18s ease-out, opacity 0.18s ease-out",
       pointerEvents:"none"
     });
-
     const title=document.createElement("div");
     title.id="acAssignTitle";
     title.style.fontWeight="600";
     title.style.marginBottom="6px";
     p.appendChild(title);
-
     const hint=document.createElement("div");
     hint.textContent="Type to search existing words or enter a new one.";
     hint.style.marginBottom="6px";
     hint.style.opacity="0.85";
     p.appendChild(hint);
-
     const input=document.createElement("input");
     input.id="acAssignInput";
     Object.assign(input.style,{
@@ -505,7 +518,6 @@
     input.onblur=function(){input.style.outline="none";};
     input.addEventListener("input",function(){updateAssignList(input.value);});
     p.appendChild(input);
-
     const list=document.createElement("div");
     list.id="acAssignList";
     Object.assign(list.style,{
@@ -517,11 +529,9 @@
       padding:"4px 0"
     });
     p.appendChild(list);
-
     const btnRow=document.createElement("div");
     btnRow.style.marginTop="4px";
     p.appendChild(btnRow);
-
     const ok=document.createElement("button");
     ok.textContent="Assign";
     Object.assign(ok.style,{
@@ -544,7 +554,6 @@
       closeAssignPanel();
     };
     btnRow.appendChild(ok);
-
     const cancel=document.createElement("button");
     cancel.textContent="Cancel";
     Object.assign(cancel.style,{
@@ -558,7 +567,6 @@
     });
     cancel.onclick=function(){closeAssignPanel();};
     btnRow.appendChild(cancel);
-
     document.body.appendChild(p);
     return p;
   }
@@ -631,14 +639,14 @@
     sb.innerHTML="";
     const tabs=document.createElement("div");
     tabs.style.marginBottom="6px";
-
     const tabNames=[
       {id:"log",label:"Log"},
+      {id:"recent",label:"Recent"},
       {id:"stats",label:"Stats"},
       {id:"export",label:"Export"},
+      {id:"dict",label:"Dictionary"},
       {id:"settings",label:"Settings"}
     ];
-
     tabNames.forEach(t=>{
       const b=document.createElement("button");
       b.textContent=t.label;
@@ -656,7 +664,6 @@
       tabs.appendChild(b);
     });
     sb.appendChild(tabs);
-
     const content=document.createElement("div");
     content.style.whiteSpace="pre-wrap";
     sb.appendChild(content);
@@ -671,19 +678,15 @@
         info.style.marginBottom="6px";
         info.style.opacity="0.85";
         content.appendChild(info);
-
         keys.forEach(w=>{
           const row=document.createElement("div");
           row.style.padding="4px 0";
           row.style.borderBottom="1px solid #222";
-
           const header=document.createElement("div");
           header.textContent=`${w} (x${g[w].length})`;
           header.style.marginBottom="2px";
           row.appendChild(header);
-
           const btnWrap=document.createElement("div");
-
           const addBtn=document.createElement("button");
           addBtn.textContent="Add";
           Object.assign(addBtn.style,{
@@ -697,20 +700,15 @@
             marginRight:"4px"
           });
           addBtn.onclick=function(){
-            if(window._acDict.has(w)){
-              alert(`"${w}" is already in your custom dictionary.`);
-              return;
-            }
-            if(confirm(`Add "${w}" to custom dictionary and remove from log?`)){
-              window._acDict.add(w);
-              saveDict();
-              window._acLog=window._acLog.filter(e=>e.word!==w);
-              saveLog();
-              renderSidebar();
-            }
+            if(window._acDict.has(w))return;
+            window._acDict.add(w);
+            saveDict();
+            rebuildMaps();
+            window._acLog=window._acLog.filter(e=>e.word!==w);
+            saveLog();
+            renderSidebar();
           };
           btnWrap.appendChild(addBtn);
-
           const assignBtn=document.createElement("button");
           assignBtn.textContent="Assign";
           Object.assign(assignBtn.style,{
@@ -725,12 +723,10 @@
           });
           assignBtn.onclick=function(){openAssignPanel(w);};
           btnWrap.appendChild(assignBtn);
-
           row.appendChild(btnWrap);
           content.appendChild(row);
         });
       }
-
       const undoBtn=document.createElement("button");
       undoBtn.textContent="Undo last correction";
       Object.assign(undoBtn.style,{
@@ -745,6 +741,43 @@
       });
       undoBtn.onclick=window.undoLastCorrection;
       content.appendChild(undoBtn);
+
+    }else if(tab==="recent"){
+      const log=window._acLog.slice().sort((a,b)=>b.when.localeCompare(a.when));
+      const max=50;
+      const info=document.createElement("div");
+      info.textContent="Most recent logged spellings (latest first):";
+      info.style.marginBottom="6px";
+      info.style.opacity="0.85";
+      content.appendChild(info);
+      if(!log.length){
+        const n=document.createElement("div");
+        n.textContent="No entries yet.";
+        content.appendChild(n);
+      }else{
+        log.slice(0,max).forEach(e=>{
+          const row=document.createElement("div");
+          row.style.padding="4px 0";
+          row.style.borderBottom="1px solid #222";
+          const when=document.createElement("div");
+          when.textContent=e.when;
+          when.style.fontSize="11px";
+          when.style.opacity="0.8";
+          row.appendChild(when);
+          const word=document.createElement("div");
+          word.textContent=e.word;
+          word.style.fontWeight="600";
+          row.appendChild(word);
+          if(e.sentence){
+            const sent=document.createElement("div");
+            sent.textContent=`“${e.sentence}”`;
+            sent.style.fontSize="11px";
+            sent.style.opacity="0.9";
+            row.appendChild(sent);
+          }
+          content.appendChild(row);
+        });
+      }
 
     }else if(tab==="stats"){
       content.textContent=makeStats();
@@ -763,7 +796,6 @@
         borderRadius:"3px"
       });
       txtBtn.onclick=window.exportSpellLogTXT;
-
       const csvBtn=document.createElement("button");
       csvBtn.textContent="Download CSV";
       Object.assign(csvBtn.style,{
@@ -776,21 +808,192 @@
         borderRadius:"3px"
       });
       csvBtn.onclick=window.exportSpellLogCSV;
-
       content.appendChild(txtBtn);
       content.appendChild(csvBtn);
 
+    }else if(tab==="dict"){
+      const info=document.createElement("div");
+      info.textContent="Filter, remove, and manage custom dictionary words.";
+      info.style.marginBottom="6px";
+      info.style.opacity="0.85";
+      content.appendChild(info);
+      const filterInput=document.createElement("input");
+      Object.assign(filterInput.style,{
+        width:"100%",
+        boxSizing:"border-box",
+        padding:"6px 8px",
+        marginBottom:"6px",
+        border:"1px solid #444",
+        borderRadius:"4px",
+        background:"#101642",
+        color:"#e5e9ff",
+        fontSize:"13px"
+      });
+      filterInput.placeholder="Filter custom words...";
+      content.appendChild(filterInput);
+      const listBox=document.createElement("div");
+      Object.assign(listBox.style,{
+        maxHeight:"40vh",
+        overflowY:"auto",
+        marginBottom:"8px",
+        border:"1px solid #1b2fbf",
+        borderRadius:"4px",
+        padding:"4px 0"
+      });
+      content.appendChild(listBox);
+
+      function renderDictList(){
+        const term=(filterInput.value||"").toLowerCase();
+        listBox.innerHTML="";
+        const arr=(window._acDictList||[]).slice().sort((a,b)=>a.localeCompare(b));
+        let shown=0;
+        arr.forEach(w=>{
+          if(term&&w.toLowerCase().indexOf(term)===-1)return;
+          shown++;
+          const row=document.createElement("div");
+          Object.assign(row.style,{
+            padding:"4px 6px",
+            display:"flex",
+            justifyContent:"space-between",
+            alignItems:"center",
+            fontSize:"13px"
+          });
+          const label=document.createElement("span");
+          label.textContent=w;
+          row.appendChild(label);
+          const iconWrap=document.createElement("span");
+          iconWrap.style.marginLeft="6px";
+          const caps=window._acCaps||{};
+          const hasCaps=!!caps[w];
+          const ext=window._acDictExt||{};
+          const hasMap=!!(ext[w]&&ext[w].length);
+          const star=document.createElement("span");
+          star.textContent=hasCaps?"⭐":"☆";
+          star.style.cursor="pointer";
+          star.style.marginLeft="2px";
+          star.title="Toggle always capitalise";
+          star.onclick=function(e){
+            e.stopPropagation();
+            if(caps[w]){delete caps[w];}else{caps[w]=true;}
+            saveCaps();
+            renderSidebar();
+          };
+          iconWrap.appendChild(star);
+          const icon=document.createElement("span");
+          icon.textContent=hasMap?"⚙️":"⬜";
+          icon.style.marginLeft="4px";
+          icon.title=hasMap?"Has custom mapped misspellings":"Custom word, no mappings";
+          iconWrap.appendChild(icon);
+          row.appendChild(iconWrap);
+          const btnWrap=document.createElement("span");
+          const rm=document.createElement("button");
+          rm.textContent="Remove";
+          Object.assign(rm.style,{
+            padding:"2px 6px",
+            fontSize:"11px",
+            cursor:"pointer",
+            background:"#700",
+            color:"#fff",
+            border:"1px solid #a00",
+            borderRadius:"3px",
+            marginLeft:"6px"
+          });
+          rm.onclick=function(e){
+            e.stopPropagation();
+            if(window._acDict.has(w)){
+              window._acDict.delete(w);
+              saveDict();
+              rebuildMaps();
+            }
+            if(window._acCaps&&window._acCaps[w]){
+              delete window._acCaps[w];
+              saveCaps();
+            }
+            renderSidebar();
+          };
+          btnWrap.appendChild(rm);
+          row.appendChild(btnWrap);
+          row.onmouseenter=function(){row.style.background="#102060";};
+          row.onmouseleave=function(){row.style.background="transparent";};
+          listBox.appendChild(row);
+        });
+        if(!shown){
+          const empty=document.createElement("div");
+          empty.textContent="No matches.";
+          empty.style.fontSize="12px";
+          empty.style.opacity="0.8";
+          empty.style.padding="4px 6px";
+          listBox.appendChild(empty);
+        }
+      }
+
+      filterInput.addEventListener("input",renderDictList);
+      renderDictList();
+
+      const mapTitle=document.createElement("div");
+      mapTitle.textContent="Add custom mapping (word or phrase):";
+      mapTitle.style.marginTop="10px";
+      mapTitle.style.marginBottom="4px";
+      content.appendChild(mapTitle);
+      const missInput=document.createElement("input");
+      Object.assign(missInput.style,{
+        width:"100%",
+        boxSizing:"border-box",
+        padding:"6px 8px",
+        marginBottom:"4px",
+        border:"1px solid #444",
+        borderRadius:"4px",
+        background:"#101642",
+        color:"#e5e9ff",
+        fontSize:"13px"
+      });
+      missInput.placeholder="Incorrect word or phrase (e.g. stellantis & you)";
+      content.appendChild(missInput);
+      const correctInput=document.createElement("input");
+      Object.assign(correctInput.style,{
+        width:"100%",
+        boxSizing:"border-box",
+        padding:"6px 8px",
+        marginBottom:"6px",
+        border:"1px solid #444",
+        borderRadius:"4px",
+        background:"#101642",
+        color:"#e5e9ff",
+        fontSize:"13px"
+      });
+      correctInput.placeholder="Correct form (e.g. Stellantis &You)";
+      content.appendChild(correctInput);
+      const mapBtn=document.createElement("button");
+      mapBtn.textContent="Save mapping";
+      Object.assign(mapBtn.style,{
+        padding:"4px 8px",
+        fontSize:"12px",
+        cursor:"pointer",
+        background:"#f9772e",
+        color:"#fff",
+        border:"none",
+        borderRadius:"4px",
+        boxShadow:"0 0 6px #f9772e99"
+      });
+      mapBtn.onclick=function(){
+        const miss=missInput.value.trim();
+        const correct=correctInput.value.trim();
+        if(!miss||!correct){alert("Enter both incorrect and correct values.");return;}
+        assignMisspelling(miss,correct);
+        missInput.value="";
+        correctInput.value="";
+      };
+      content.appendChild(mapBtn);
+
     }else if(tab==="settings"){
       const dictTitle=document.createElement("div");
-      dictTitle.textContent="Custom dictionary words:";
+      dictTitle.textContent="Custom dictionary words (raw):";
       dictTitle.style.marginBottom="4px";
       content.appendChild(dictTitle);
-
       const dictList=document.createElement("div");
       dictList.textContent=window._acDictList.length?window._acDictList.join(", "):"(none)";
       dictList.style.marginBottom="8px";
       content.appendChild(dictList);
-
       const clearLogBtn=document.createElement("button");
       clearLogBtn.textContent="Clear log";
       Object.assign(clearLogBtn.style,{
@@ -811,7 +1014,6 @@
           renderSidebar();
         }
       };
-
       const clearDictBtn=document.createElement("button");
       clearDictBtn.textContent="Clear dictionary";
       Object.assign(clearDictBtn.style,{
@@ -827,10 +1029,10 @@
         if(confirm("Clear custom dictionary?")){
           window._acDict.clear();
           saveDict();
+          rebuildMaps();
           renderSidebar();
         }
       };
-
       content.appendChild(clearLogBtn);
       content.appendChild(clearDictBtn);
     }
@@ -864,7 +1066,7 @@
       zIndex:999999,
       cursor:"pointer"
     });
-    b.title="Spelling log – click or press Alt+T";
+    b.title="Spelling log - click or press Alt+T";
     b.onclick=window.toggleSpellSidebar;
     document.body.appendChild(b);
   }
@@ -879,6 +1081,7 @@
       }
     });
   }
+
   ensureToggleButton();
   injectStyles();
 
@@ -888,7 +1091,7 @@
     div.addEventListener("keyup",function(e){
       if(![" ","Enter",".",",","!","?","›",">"].includes(e.key))return;
       const typed=e.key==="Enter"?"\n":e.key;
-      const delim=e.key===">"?"?":typed;
+      const delim=typed;
 
       const sel=window.getSelection();
       if(!sel.rangeCount)return;
@@ -898,28 +1101,32 @@
       const pre=rng.cloneRange();
       pre.selectNodeContents(div);
       pre.setEnd(rng.endContainer,rng.endOffset);
-
       const full=pre.toString();
       if(!full.endsWith(typed))return;
 
       const t=full.slice(0,-1);
       const rest=div.innerText.slice(full.length);
       const low=t.toLowerCase();
-
       const fullBefore=t+delim+rest;
       const caretBefore=full.length;
 
       for(const obj of MULTI){
         const phrase=obj.key,correct=obj.correct;
-        const m=low.match(new RegExp("("+phrase+")([.,!?])?$"));
+        const esc=phrase.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+        const re=new RegExp("("+esc+")((?:['’]s|s['’])?)([.,!?])?$");
+        const m=low.match(re);
         if(m){
-          const punct=m[2]||"";
-          const len=phrase.length+(punct?1:0);
+          const poss=m[2]||"";
+          const punct=m[3]||"";
+          const len=phrase.length+poss.length+punct.length;
           let p=t.length-len-1;
           while(p>=0&&/\s/.test(t.charAt(p)))p--;
           const start=(p<0)||/[.!?]/.test(t.charAt(p));
-          const rep=start?correct.charAt(0).toUpperCase()+correct.slice(1):correct;
-          const newT=t.slice(0,-len)+rep+punct;
+          const caps=window._acCaps||{};
+          const always=!!caps[correct];
+          let rep=correct;
+          if(!always&&start)rep=correct.charAt(0).toUpperCase()+correct.slice(1);
+          const newT=t.slice(0,-len)+rep+poss+punct;
           const fullAfter=newT+delim+rest;
           div.innerText=fullAfter;
           const caretAfter=newT.length+1;
@@ -934,27 +1141,37 @@
       for(let i=parts.length-1;i>=0;i--){if(parts[i].trim()!==""){idx=i;break;}}
       if(idx<0)return;
 
-      const raw=parts[idx].match(/^(.+?)([.,!?])?$/);
+      const raw=parts[idx].match(/^(.+?)(['’]s|s['’])?([.,!?])?$/);
       const core=raw?raw[1]:parts[idx];
-      const punct=raw&&raw[2]?raw[2]:"";
+      const poss=raw&&raw[2]?raw[2]:"";
+      const punct=raw&&raw[3]?raw[3]:"";
       const lc=core.toLowerCase();
 
       record(core);
 
       let rep=FLAT[lc]||null;
-      if(!rep&&lc==="i")rep="I";
+      if(!rep&&lc==="i")rep="I"; // safety double-guard, though DICT maps i→I
 
       let count=0;
       for(let j=0;j<idx;j++)count+=parts[j].length;
       let p=count-1;
       while(p>=0&&/\s/.test(t.charAt(p)))p--;
       const start=(p<0)||/[.!?]/.test(t.charAt(p));
+      const caps=window._acCaps||{};
+      const always=rep?!!caps[rep]:false;
 
-      if(rep&&start)rep=rep.charAt(0).toUpperCase()+rep.slice(1);
-      else if(!rep&&start)rep=core.charAt(0).toUpperCase()+core.slice(1);
+      if(rep){
+        if(always){
+        }else if(start){
+          rep=rep.charAt(0).toUpperCase()+rep.slice(1);
+        }
+      }else{
+        if(start)rep=core.charAt(0).toUpperCase()+core.slice(1);
+        else rep=core;
+      }
 
       if(rep&&rep!==core){
-        parts[idx]=rep+punct;
+        parts[idx]=rep+poss+punct;
         const newT=parts.join("");
         const fullAfter=newT+delim+rest;
         div.innerText=fullAfter;
