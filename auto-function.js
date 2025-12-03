@@ -75,130 +75,187 @@ AC.saveCaps();
 };
 AC.ensureDefaultCaps();
 AC.rebuildMaps = function rebuildMaps() {
-const base = AC.baseDict || {};
-const customMap = AC.state.customMap || {};
-const customSet = AC.state.customSet;
-const flat = {};
-const multi = [];
-const canonSet = new Set();
-function applyDict(dictObj) {
-for (const canonical in dictObj) {
-if (!Object.prototype.hasOwnProperty.call(dictObj, canonical)) continue;
-const missList = dictObj[canonical] || [];
-const cLower = canonical.toLowerCase();
-if (!flat[cLower]) flat[cLower] = canonical;
-canonSet.add(canonical);
-missList.forEach(m => {
-if (!m) return;
-const ml = m.toLowerCase();
-if (!flat[ml]) flat[ml] = canonical;
-});
-if (canonical.indexOf(' ') !== -1) {
-multi.push({ key: cLower, canonical });
-}
-missList.forEach(m => {
-if (m && m.indexOf(' ') !== -1) {
-multi.push({ key: m.toLowerCase(), canonical });
-}
-});
-}
-}
-applyDict(base);
-applyDict(customMap);
-AC.state.customList.forEach(w => {
-if (!w) return;
-const lw = w.toLowerCase();
-canonSet.add(w);
-if (!flat[lw]) flat[lw] = w;
-});
-AC.state.flatMap = flat;
-AC.state.multi = multi;
-AC.state.canonicals = Array.from(canonSet).sort((a, b) => a.localeCompare(b));
+  const base = AC.baseDict || {};
+  const customMap = AC.state.customMap || {};
+  const customSet = AC.state.customSet;
+
+  const flat = {};
+  const multi = [];
+  const canonSet = new Set();
+
+  function addCanon(c) {
+    if (!c) return;
+    canonSet.add(c);
+    const lc = c.toLowerCase();
+    if (!flat[lc]) flat[lc] = c;
+    if (c.indexOf(' ') !== -1) multi.push({ key: lc, canonical: c });
+  }
+
+  function addMiss(m, c) {
+    if (!m || !c) return;
+    const lm = m.toLowerCase();
+    if (!flat[lm]) flat[lm] = c;
+    if (m.indexOf(' ') !== -1) multi.push({ key: lm, canonical: c });
+  }
+
+  for (const c in base) {
+    const list = base[c] || [];
+    addCanon(c);
+    list.forEach(m => addMiss(m, c));
+  }
+
+  for (const c in customMap) {
+    const list = customMap[c] || [];
+    addCanon(c);
+    list.forEach(m => addMiss(m, c));
+  }
+
+  customSet.forEach(c => addCanon(c));
+
+  AC.state.flatMap = flat;
+  AC.state.multi = multi;
+  AC.state.canonicals = Array.from(canonSet).sort();
 };
 AC.healDictionaries = function healDictionaries() {
-let changed = false;
-if (AC.state.customList) {
-const cleaned = Array.from(
-new Set(
-AC.state.customList.filter(w => w && w.trim().length > 1)
-)
-).sort();
-if (JSON.stringify(cleaned) !== JSON.stringify(AC.state.customList)) {
-AC.state.customList = cleaned;
-AC.state.customSet = new Set(cleaned);
-changed = true;
-}
-}
-if (AC.state.customSet) {
-const setFromList = new Set(AC.state.customList);
-if ([...AC.state.customSet].some(w => !setFromList.has(w))) {
-AC.state.customSet = setFromList;
-changed = true;
-}
-}
-const base = AC.baseDict || {};
-const customMap = AC.state.customMap || {};
-const caps = AC.state.caps || {};
-let cleanedMap = false;
-for (const cor in customMap) {
-if (!Object.prototype.hasOwnProperty.call(customMap, cor)) continue;
-if (!cor || !cor.trim()) {
-delete customMap[cor];
-cleanedMap = true;
-continue;
-}
-const isKnownCanonical = true;
-customMap[cor] = customMap[cor].filter(m => m && m.trim().length > 1);
-}
-if (cleanedMap) changed = true;
-if (changed) {
-AC.saveCustomDict();
-AC.saveCustomMap();
-AC.rebuildMaps();
-} else {
-AC.rebuildMaps();
-}
+  const list = AC.state.customList || [];
+  const set = new Set(list.filter(w => w && w.trim().length > 1));
+  AC.state.customSet = set;
+  AC.state.customList = Array.from(set).sort();
+
+  const map = AC.state.customMap || {};
+  for (const c in map) {
+    if (!c || !c.trim()) {
+      delete map[c];
+      continue;
+    }
+    map[c] = map[c].filter(m => m && m.trim().length > 1);
+  }
+
+  AC.state.customMap = map;
+
+  AC.saveCustomDict();
+  AC.saveCustomMap();
+
+  AC.rebuildMaps();
 };
 AC.captureSentence = function captureSentence() {
-const sel = window.getSelection();
-if (!sel || !sel.rangeCount) return '';
-const r = sel.getRangeAt(0);
-const pre = r.cloneRange();
-pre.collapse(true);
-while (pre.startOffset > 0) {
-pre.setStart(pre.startContainer, pre.startOffset - 1);
-const ch = pre.toString().charAt(0);
-if (/[.!?]/.test(ch)) break;
-}
-const post = r.cloneRange();
-post.collapse(false);
-while (post.endOffset < (post.endContainer.length || 0)) {
-post.setEnd(post.endContainer, post.endOffset + 1);
-const tail = post.toString();
-if (/[.!?]/.test(tail.charAt(tail.length - 1))) break;
-}
-const s = (pre.toString() + r.toString() + post.toString())
-.replace(/\s+/g, ' ')
-.trim();
-return s;
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return '';
+
+  const r = sel.getRangeAt(0);
+
+  const container = r.commonAncestorContainer;
+  const root = container.nodeType === 3 ? container.parentNode : container;
+
+  const text = root.innerText || root.textContent || '';
+  if (!text) return '';
+
+  const caret = r.startOffset;
+  const cleaned = text.replace(/\s+/g, ' ');
+
+  let start = caret;
+  while (start > 0 && !/[.!?]/.test(cleaned[start - 1])) start--;
+
+  let end = caret;
+  while (end < cleaned.length && !/[.!?]/.test(cleaned[end])) end++;
+
+  const slice = cleaned.slice(start, end + 1).trim();
+
+  return slice;
 };
 AC.recordUnknown = function recordUnknown(word) {
-const w = (word || '').toLowerCase().trim();
-if (w.length < 2) return;
-if (AC.state.flatMap[w] || AC.state.customSet.has(w)) return;
-const today = todayStr();
-const existingToday = (AC.state.log || []).some(
-e => e.word === w && e.when.slice(0, 10) === today
-);
-if (existingToday) return;
-const entry = {
-word: w,
-when: new Date().toISOString(),
-sentence: AC.captureSentence()
+  if (!word) return;
+
+  const w = word.trim().toLowerCase();
+  if (w.length < 2) return;
+
+  if (/^\d/.test(w)) {
+    if (!AC.isValidTime(w)) return;
+  }
+
+  if (AC.isValidTime(w)) return;
+
+  if (AC.state.flatMap[w] || AC.state.customSet.has(w)) return;
+
+  const today = todayStr();
+  const exists = (AC.state.log || []).some(
+    e => e.word === w && e.when.slice(0, 10) === today
+  );
+  if (exists) return;
+
+  AC.state.log.push({
+    word: w,
+    when: new Date().toISOString(),
+    sentence: AC.captureSentence()
+  });
+
+  AC.saveLog();
 };
-AC.state.log.push(entry);
-AC.saveLog();
+AC.isValidTime = function(str) {
+  if (!str) return false;
+  const s = str.trim().toLowerCase();
+
+  if (/^\d{1,2}\s*(am|pm)$/.test(s)) return true;
+
+  if (/^\d{1,2}:\d{2}$/.test(s)) {
+    const [h, m] = s.split(':').map(Number);
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+  }
+
+  if (/^\d{1,2}:\d{2}\s*(am|pm)$/.test(s)) {
+    const m = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)/);
+    if (!m) return false;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    return hh >= 1 && hh <= 12 && mm >= 0 && mm <= 59;
+  }
+
+  return false;
 };
+
+AC.cleanNumericLogs = function() {
+  AC.state.log = (AC.state.log || []).filter(e => {
+    if (!e.word) return false;
+    if (/\d/.test(e.word)) {
+      return AC.isValidTime(e.word);
+    }
+    return true;
+  });
+  AC.saveLog();
+};
+AC.normaliseTime = function(str) {
+  if (!str) return str;
+  const s = str.trim().toLowerCase();
+
+  if (/^\d{1,2}\s*(am|pm)$/.test(s)) {
+    const m = s.match(/(\d{1,2})\s*(am|pm)/);
+    let h = Number(m[1]);
+    const ap = m[2];
+    if (ap === 'pm' && h !== 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    return (h < 10 ? '0' : '') + h + ':00';
+  }
+
+  if (/^\d{1,2}:\d{2}$/.test(s)) {
+    const [h, m] = s.split(':').map(Number);
+    const hh = (h < 10 ? '0' : '') + h;
+    const mm = (m < 10 ? '0' : '') + m;
+    return hh + ':' + mm;
+  }
+
+  if (/^\d{1,2}:\d{2}\s*(am|pm)$/.test(s)) {
+    const m = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)/);
+    let hh = Number(m[1]);
+    const mm = Number(m[2]);
+    const ap = m[3];
+    if (ap === 'pm' && hh !== 12) hh += 12;
+    if (ap === 'am' && hh === 12) hh = 0;
+    return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  return str;
+};
+
 AC.setCaret = function setCaret(div, index) {
 const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null);
 let node = walker.nextNode();
@@ -246,187 +303,262 @@ AC.setCaret(c.div, Math.min(c.caretBefore, c.before.length));
 AC.lastCorrection = null;
 };
 AC.correctInDiv = function correctInDiv(div, triggerKey) {
-const validTriggers = [' ', 'Enter', '.', ',', '!', '?'];
-if (!validTriggers.includes(triggerKey)) return;
-const sel = window.getSelection();
-if (!sel || !sel.rangeCount) return;
-const rng = sel.getRangeAt(0);
-if (!rng.collapsed) return;
-const flat = AC.state.flatMap;
-const multi = AC.state.multi;
-const fullText = div.innerText;
-const caretNodeRange = rng.cloneRange();
-const pre = caretNodeRange;
-pre.selectNodeContents(div);
-pre.setEnd(rng.endContainer, rng.endOffset);
-let typedChunk = pre.toString();
-const delimChar = triggerKey === 'Enter' ? '\n' : triggerKey;
-if (!typedChunk.endsWith(delimChar)) return;
-const beforeDelim = typedChunk.slice(0, -1);
-const afterDelimRest = fullText.slice(typedChunk.length);
-const originalFull = beforeDelim + delimChar + afterDelimRest;
-const caretBefore = typedChunk.length;
-const lowerBefore = beforeDelim.toLowerCase();
-for (let i = 0; i < multi.length; i++) {
-const m = multi[i];
-const phrase = m.key;
-const canonical = m.canonical;
-const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const re = new RegExp("(" + esc + ")([']s|s['])?([.,!?])?$");
-const match = lowerBefore.match(re);
-if (!match) continue;
-const poss = match[2] || '';
-const punct = match[3] || '';
-const totalLen = match[0].length;
-const newBefore = beforeDelim.slice(0, beforeDelim.length - totalLen);
-const startIndex = newBefore.length;
-const startSentence = isSentenceStart(beforeDelim, startIndex);
-const correctedCore = applyCapsRule(canonical, startSentence);
-const newBeforeFull = newBefore + correctedCore + poss + punct;
-const newFull = newBeforeFull + delimChar + afterDelimRest;
-div.innerText = newFull;
-const caretAfter = newBeforeFull.length + 1;
-AC.setCaret(div, caretAfter);
-AC.lastCorrection = {
-div: div,
-before: originalFull,
-after: newFull,
-caretBefore: caretBefore,
-caretAfter: caretAfter
-};
-return;
+
+  const validTriggers = [' ', 'Enter', '.', ',', '!', '?'];
+  if (!validTriggers.includes(triggerKey)) return;
+
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const rng = sel.getRangeAt(0);
+  if (!rng.collapsed) return;
+
+  const fullText = div.innerText;
+  const flat = AC.state.flatMap;
+  const multi = AC.state.multi;
+
+  const r = rng.cloneRange();
+  r.selectNodeContents(div);
+  r.setEnd(rng.endContainer, rng.endOffset);
+
+  let typed = r.toString();
+  const delim = triggerKey === 'Enter' ? '\n' : triggerKey;
+  if (!typed.endsWith(delim)) return;
+
+  const before = typed.slice(0, -1);
+  const after = fullText.slice(typed.length);
+  const original = before + delim + after;
+
+  const lowerBefore = before.toLowerCase();
+
+  for (let i = 0; i < multi.length; i++) {
+    const { key, canonical } = multi[i];
+    const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const re = new RegExp(`(?:^|\\s)(${esc})(?=$|\\s|[.,!?])`, 'i');
+    const match = lowerBefore.match(re);
+
+    if (match) {
+      const startIndex = match.index;
+      const endIndex = startIndex + match[1].length;
+
+      const isSentenceStart =
+        startIndex === 0 ||
+        /[.!?]\s*$/.test(before.slice(0, startIndex));
+
+      const corrected = applyCapsRule(canonical, isSentenceStart);
+
+      const newBefore =
+        before.slice(0, startIndex) +
+        corrected +
+        before.slice(endIndex);
+
+      const newFull = newBefore + delim + after;
+
+      div.innerText = newFull;
+      AC.setCaret(div, newBefore.length + 1);
+
+      AC.lastCorrection = {
+        div,
+        before: original,
+        after: newFull,
+        caretBefore: typed.length,
+        caretAfter: newBefore.length + 1
+      };
+
+      return;
+    }
+  }
+
+  const parts = before.split(/(\s+)/);
+  let idx = -1;
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (parts[i].trim() !== '') { idx = i; break; }
+  }
+  if (idx < 0) return;
+
+const token = parts[idx].match(/^(.+?)([']s|s['])?([.,!?])?$/);
+const core = token ? token[1] : parts[idx];
+const poss = token && token[2] ? token[2] : '';
+const punct = token && token[3] ? token[3] : '';
+
+if (AC.isValidTime(core)) {
+  const norm = AC.normaliseTime(core);
+  parts[idx] = norm + poss + punct;
+
+  const newBefore = parts.join('');
+  const newFull = newBefore + delim + after;
+
+  div.innerText = newFull;
+  AC.setCaret(div, newBefore.length + 1);
+
+  AC.lastCorrection = {
+    div,
+    before: original,
+    after: newFull,
+    caretBefore: typed.length,
+    caretAfter: newBefore.length + 1
+  };
+  return;
 }
-const parts = beforeDelim.split(/(\s+)/);
-let idx = -1;
-for (let i = parts.length - 1; i >= 0; i--) {
-if (parts[i].trim() !== '') {
-idx = i;
-break;
-}
-}
-if (idx < 0) return;
-const rawToken = parts[idx];
-const tokenMatch = rawToken.match(/^(.+?)([']s|s['])?([.,!?])?$/);
-const core = tokenMatch ? tokenMatch[1] : rawToken;
-const poss = tokenMatch && tokenMatch[2] ? tokenMatch[2] : '';
-const punct = tokenMatch && tokenMatch[3] ? tokenMatch[3] : '';
-const lowerCore = core.toLowerCase();
+
 AC.recordUnknown(core);
+
+const lowerCore = core.toLowerCase();
 let canonical = flat[lowerCore] || null;
 if (!canonical && lowerCore === 'i') canonical = 'I';
-let charsBeforeWord = 0;
-for (let j = 0; j < idx; j++) charsBeforeWord += parts[j].length;
-const startIndex = charsBeforeWord;
-const startSentence = isSentenceStart(beforeDelim, startIndex);
-let replacement = core;
-if (canonical) {
-replacement = applyCapsRule(canonical, startSentence);
-} else {
-if (startSentence) {
-replacement = core.charAt(0).toUpperCase() + core.slice(1);
-} else {
-replacement = core;
-}
-}
+
+let charCount = 0;
+for (let j = 0; j < idx; j++) charCount += parts[j].length;
+
+const isSentenceStart =
+  charCount === 0 ||
+  /[.!?]\s*$/.test(before.slice(0, charCount));
+
+let replacement = canonical
+  ? applyCapsRule(canonical, isSentenceStart)
+  : isSentenceStart
+    ? core.charAt(0).toUpperCase() + core.slice(1)
+    : core;
+
 if (replacement !== core) {
-parts[idx] = replacement + poss + punct;
-const newBeforeFull = parts.join('');
-const newFull = newBeforeFull + delimChar + afterDelimRest;
-div.innerText = newFull;
-const caretAfter = newBeforeFull.length + 1;
-AC.setCaret(div, caretAfter);
-AC.lastCorrection = {
-div: div,
-before: originalFull,
-after: newFull,
-caretBefore: caretBefore,
-caretAfter: caretAfter
-};
+  parts[idx] = replacement + poss + punct;
+
+  const newBefore = parts.join('');
+  const newFull = newBefore + delim + after;
+
+  div.innerText = newFull;
+
+  AC.setCaret(div, newBefore.length + 1);
+
+  AC.lastCorrection = {
+    div,
+    before: original,
+    after: newFull,
+    caretBefore: typed.length,
+    caretAfter: newBefore.length + 1
+  };
 }
-};
 AC.groupLogByWord = function groupLogByWord(log) {
-const g = {};
-(log || []).forEach(e => {
-if (!e || !e.word) return;
-if (!g[e.word]) g[e.word] = [];
-g[e.word].push(e);
-});
-return g;
+  const g = {};
+  (log || []).forEach(e => {
+    if (!e || !e.word) return;
+    if (!g[e.word]) g[e.word] = [];
+    g[e.word].push(e);
+  });
+  return g;
 };
 AC.makeStatsText = function makeStatsText() {
-const log = AC.state.log || [];
-const g = AC.groupLogByWord(log);
-const total = log.length;
-const unique = Object.keys(g).length;
-const today = todayStr();
-const todayEntries = log.filter(e => e.when.slice(0, 10) === today);
-const todayTotal = todayEntries.length;
-const todayUnique = new Set(todayEntries.map(e => e.word)).size;
-const top = Object.keys(g)
-.map(w => ({ w, count: g[w].length }))
-.sort((a, b) => b.count - a.count)
-.slice(0, 10);
-let txt = '';
-txt += 'Total entries: ' + total + '\n';
-txt += 'Unique words: ' + unique + '\n\n';
-txt += 'Today: ' + todayTotal + ' entries, ' + todayUnique + ' unique\n\n';
-txt += 'Top words:\n';
-top.forEach(o => {
-txt += ' - ' + o.w + ' (x' + o.count + ')\n';
-});
-return txt;
+  const raw = AC.state.log || [];
+  const log = raw.filter(e => {
+    if (!e || !e.word) return false;
+    if (/\d/.test(e.word) && !AC.isValidTime(e.word)) return false;
+    return true;
+  });
+
+  const grouped = AC.groupLogByWord(log);
+
+  const total = log.length;
+  const unique = Object.keys(grouped).length;
+
+  const today = todayStr();
+  const todayEntries = log.filter(e => e.when.slice(0, 10) === today);
+  const todayTotal = todayEntries.length;
+  const todayUnique = new Set(todayEntries.map(e => e.word)).size;
+
+  const top = Object.keys(grouped)
+    .map(w => ({ w, count: grouped[w].length }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  let txt = '';
+  txt += 'Total entries: ' + total + '\n';
+  txt += 'Unique words: ' + unique + '\n\n';
+  txt += 'Today: ' + todayTotal + ' entries, ' + todayUnique + ' unique\n\n';
+  txt += 'Top words:\n';
+
+  top.forEach(o => {
+    txt += ' - ' + o.w + ' (x' + o.count + ')\n';
+  });
+
+  return txt;
 };
 AC.exportTXT = function exportTXT() {
-const log = AC.state.log || [];
-if (!log.length) {
-const blobEmpty = new Blob(['No entries.'], { type: 'text/plain' });
-const urlEmpty = URL.createObjectURL(blobEmpty);
-window.open(urlEmpty, '_blank');
-return;
-}
-const grouped = AC.groupLogByWord(log);
-const keys = Object.keys(grouped).sort();
-let out = '';
-keys.forEach(w => {
-const arr = grouped[w];
-out += '\n' + w.toUpperCase() + ' (x' + arr.length + ')\n';
-arr.forEach(e => {
-out += ' • ' + e.when;
-if (e.sentence) out += ' - "' + e.sentence.replace(/\s+/g, ' ') + '"';
-out += '\n';
-});
-out += '\n';
-});
-const blob = new Blob([out.trim()], { type: 'text/plain' });
-const url = URL.createObjectURL(blob);
-window.open(url, '_blank');
+  const raw = AC.state.log || [];
+  const log = raw.filter(e => {
+    if (!e || !e.word) return false;
+    if (/\d/.test(e.word) && !AC.isValidTime(e.word)) return false;
+    return true;
+  });
+
+  if (!log.length) {
+    const blobEmpty = new Blob(['No entries.'], { type: 'text/plain' });
+    const urlEmpty = URL.createObjectURL(blobEmpty);
+    window.open(urlEmpty, '_blank');
+    return;
+  }
+
+  const grouped = AC.groupLogByWord(log);
+  const keys = Object.keys(grouped).sort();
+
+  let out = '';
+  keys.forEach(w => {
+    const arr = grouped[w];
+    out += '\n' + w.toUpperCase() + ' (x' + arr.length + ')\n';
+
+    arr.forEach(e => {
+      out += ' • ' + e.when;
+      if (e.sentence) {
+        out += ' - "' + e.sentence.replace(/\s+/g, ' ') + '"';
+      }
+      out += '\n';
+    });
+
+    out += '\n';
+  });
+
+  const blob = new Blob([out.trim()], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
 };
+
 AC.exportCSV = function exportCSV() {
-const log = AC.state.log || [];
-const grouped = AC.groupLogByWord(log);
-const keys = Object.keys(grouped);
-if (!keys.length) {
-const blobEmpty = new Blob(['word,count,first_seen,last_seen,sample\n'], {
-type: 'text/csv'
-});
-const urlEmpty = URL.createObjectURL(blobEmpty);
-window.open(urlEmpty, '_blank');
-return;
-}
-const rows = ['word,count,first_seen,last_seen,sample'];
-keys.forEach(w => {
-const arr = grouped[w].slice().sort((a, b) => a.when.localeCompare(b.when));
-const count = arr.length;
-const first = arr[0].when;
-const last = arr[arr.length - 1].when;
-const sample = (arr[0].sentence || '').replace(/"/g, "''");
-rows.push(
-'"' + w + '",' + count + ',"' + first + '","' + last + '","' + sample + '"'
-);
-});
-const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-const url = URL.createObjectURL(blob);
-window.open(url, '_blank');
+  const raw = AC.state.log || [];
+  const log = raw.filter(e => {
+    if (!e || !e.word) return false;
+    if (/\d/.test(e.word) && !AC.isValidTime(e.word)) return false;
+    return true;
+  });
+
+  const grouped = AC.groupLogByWord(log);
+  const keys = Object.keys(grouped);
+
+  if (!keys.length) {
+    const blobEmpty = new Blob(['word,count,first_seen,last_seen,sample\n'], {
+      type: 'text/csv'
+    });
+    const urlEmpty = URL.createObjectURL(blobEmpty);
+    window.open(urlEmpty, '_blank');
+    return;
+  }
+
+  const rows = ['word,count,first_seen,last_seen,sample'];
+
+  keys.forEach(w => {
+    const arr = grouped[w].slice().sort((a, b) => a.when.localeCompare(b.when));
+    const count = arr.length;
+    const first = arr[0].when;
+    const last = arr[arr.length - 1].when;
+    const sample = (arr[0].sentence || '').replace(/"/g, "''");
+
+    rows.push(
+      '"' + w + '",' + count + ',"' + first + '","' + last + '","' + sample + '"'
+    );
+  });
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
 };
 AC.ensureRoot = function ensureRoot() {
 let root = document.getElementById('ac-root');
@@ -477,6 +609,7 @@ AC.toggleSidebar();
 });
 }
 AC.healDictionaries();
+AC.cleanNumericLogs();
 AC.ensureToggleButton();
 AC.baseDict = {
 'Abarth': ['abart','abarht','abarth?'],
@@ -738,619 +871,709 @@ st.textContent =
 document.head.appendChild(st);
 }
 function buildShell() {
-const root = AC.ensureRoot();
-root.style.pointerEvents = 'none';
-let sidebar = document.getElementById('ac-sidebar');
-if (!sidebar) {
-sidebar = document.createElement('div');
-sidebar.id = 'ac-sidebar';
-sidebar.style.position = 'absolute';
-sidebar.style.left = '0';
-sidebar.style.top = '0';
-sidebar.style.width = '280px';
-sidebar.style.height = '100%';
-sidebar.style.background = '#1e1d49';
-sidebar.style.color = '#e5e9ff';
-sidebar.style.padding = '8px';
-sidebar.style.fontSize = '12px';
-sidebar.style.overflowY = 'auto';
-sidebar.style.borderRight = '2px solid #483a73';
-sidebar.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
-sidebar.style.transform = 'translateX(-100%)';
-sidebar.style.opacity = '0';
-sidebar.style.transition = 'transform 0.15s ease-out, opacity 0.15s ease-out';
-root.appendChild(sidebar);
-}
-let panel = document.getElementById('ac-map-panel');
-if (!panel) {
-panel = document.createElement('div');
-panel.id = 'ac-map-panel';
-panel.style.position = 'fixed';
-panel.style.top = '0';
-panel.style.right = '0';
-panel.style.width = '320px';
-panel.style.height = '100%';
-panel.style.background = '#34416a';
-panel.style.color = '#e5e9ff';
-panel.style.padding = '10px';
-panel.style.overflowY = 'auto';
-panel.style.borderLeft = '2px solid #483a73';
-panel.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
-panel.style.transform = 'translateX(100%)';
-panel.style.opacity = '0';
-panel.style.transition = 'transform 0.18s ease-out, opacity 0.18s ease-out';
-panel.style.zIndex = '999999';
-panel.style.pointerEvents = 'none';
-document.body.appendChild(panel);
-}
-return { root, sidebar, panel };
+  const root = AC.ensureRoot();
+  root.style.pointerEvents = 'none';
+
+  let sidebar = document.getElementById('ac-sidebar');
+  if (!sidebar) {
+    sidebar = document.createElement('div');
+    sidebar.id = 'ac-sidebar';
+    sidebar.style.position = 'absolute';
+    sidebar.style.left = '0';
+    sidebar.style.top = '0';
+    sidebar.style.width = '280px';
+    sidebar.style.height = '100%';
+    sidebar.style.background = '#1e1d49';
+    sidebar.style.color = '#e5e9ff';
+    sidebar.style.padding = '8px';
+    sidebar.style.fontSize = '12px';
+    sidebar.style.overflowY = 'auto';
+    sidebar.style.borderRight = '2px solid #483a73';
+    sidebar.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+    sidebar.style.transform = 'translateX(-100%)';
+    sidebar.style.opacity = '0';
+    sidebar.style.transition = 'transform 0.15s ease-out, opacity 0.15s ease-out';
+    root.appendChild(sidebar);
+  }
+
+  let panel = document.getElementById('ac-map-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'ac-map-panel';
+    panel.style.position = 'fixed';
+    panel.style.top = '0';
+    panel.style.right = '0';
+    panel.style.width = '320px';
+    panel.style.height = '100%';
+    panel.style.background = '#34416a';
+    panel.style.color = '#e5e9ff';
+    panel.style.padding = '10px';
+    panel.style.overflowY = 'auto';
+    panel.style.borderLeft = '2px solid #483a73';
+    panel.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+    panel.style.transform = 'translateX(100%)';
+    panel.style.opacity = '0';
+    panel.style.transition = 'transform 0.18s ease-out, opacity 0.18s ease-out';
+    panel.style.zIndex = '999999';
+    panel.style.pointerEvents = 'none';
+    document.body.appendChild(panel);
+  }
+
+  return { root, sidebar, panel };
 }
 function openSidebar() {
-const shell = buildShell();
-shell.root.style.pointerEvents = 'auto';
-const sidebar = shell.sidebar;
-sidebar.style.transform = 'translateX(0)';
-sidebar.style.opacity = '1';
-sidebarOpen = true;
-renderSidebar();
+  const shell = buildShell();
+  const sidebar = shell.sidebar;
+
+  shell.root.style.pointerEvents = 'auto';
+
+  sidebar.style.transform = 'translateX(0)';
+  sidebar.style.opacity = '1';
+
+  sidebarOpen = true;
+  renderSidebar();
 }
+
 function closeSidebar() {
-const root = document.getElementById('ac-root');
-const sidebar = document.getElementById('ac-sidebar');
-if (root) root.style.pointerEvents = 'none';
-if (sidebar) {
-sidebar.style.transform = 'translateX(-100%)';
-sidebar.style.opacity = '0';
-}
-sidebarOpen = false;
-closeMapPanel();
+  const root = document.getElementById('ac-root');
+  const sidebar = document.getElementById('ac-sidebar');
+
+  if (root) root.style.pointerEvents = 'none';
+  if (sidebar) {
+    sidebar.style.transform = 'translateX(-100%)';
+    sidebar.style.opacity = '0';
+  }
+
+  sidebarOpen = false;
+  closeMapPanel();
 }
 AC.toggleSidebar = function toggleSidebar() {
-injectStyles();
-if (sidebarOpen) closeSidebar();
-else openSidebar();
+  injectStyles();
+  if (sidebarOpen) closeSidebar();
+  else openSidebar();
 };
 function openMapPanel(targetMiss) {
-const shell = buildShell();
-const panel = shell.panel;
-panel.innerHTML = '';
-const title = document.createElement('div');
-title.textContent = 'Assign "' + targetMiss + '" to:';
-title.style.fontWeight = '600';
-title.style.marginBottom = '6px';
-panel.appendChild(title);
-const hint = document.createElement('div');
-hint.textContent = 'Search existing words or type a new canonical.';
-hint.style.marginBottom = '6px';
-hint.style.opacity = '0.85';
-panel.appendChild(hint);
-const input = document.createElement('input');
-input.style.width = '100%';
-input.style.padding = '6px 8px';
-input.style.marginBottom = '6px';
-input.style.border = '1px solid #483a73';
-input.style.borderRadius = '4px';
-input.style.background = '#1e1d49';
-input.style.color = '#e5e9ff';
-input.placeholder = 'Canonical word or phrase';
-panel.appendChild(input);
-const list = document.createElement('div');
-list.style.maxHeight = '60vh';
-list.style.overflowY = 'auto';
-list.style.border = '1px solid #483a73';
-list.style.borderRadius = '4px';
-list.style.padding = '4px 0';
-list.style.marginBottom = '8px';
-panel.appendChild(list);
-function renderList(filter) {
-list.innerHTML = '';
-const canon = state.canonicals || [];
-const f = (filter || '').toLowerCase();
-let shown = 0;
-canon.forEach(w => {
-if (f && w.toLowerCase().indexOf(f) === -1) return;
-const row = document.createElement('div');
-row.textContent = w;
-row.style.padding = '4px 6px';
-row.style.cursor = 'pointer';
-row.style.fontSize = '13px';
-row.onmouseenter = function(){ row.style.background = '#483a73'; };
-row.onmouseleave = function(){ row.style.background = 'transparent'; };
-row.onclick = function(){
-input.value = w;
-};
-list.appendChild(row);
-shown++;
-});
-if (!shown) {
-const empty = document.createElement('div');
-empty.textContent = 'No matches.';
-empty.style.padding = '4px 6px';
-empty.style.fontSize = '12px';
-empty.style.opacity = '0.85';
-list.appendChild(empty);
-}
-}
-renderList('');
-input.addEventListener('input', function(){
-renderList(input.value);
-});
-const btnRow = document.createElement('div');
-btnRow.style.marginTop = '4px';
-panel.appendChild(btnRow);
-const ok = document.createElement('button');
-ok.textContent = 'Assign';
-ok.style.padding = '4px 8px';
-ok.style.fontSize = '12px';
-ok.style.cursor = 'pointer';
-ok.style.background = '#f9772e';
-ok.style.border = 'none';
-ok.style.color = '#fff';
-ok.style.borderRadius = '4px';
-ok.style.marginRight = '6px';
-ok.onclick = function(){
-const canonical = (input.value || '').trim();
-if (!canonical) {
-alert('Enter a canonical word first.');
-return;
-}
-assignMisspelling(targetMiss, canonical);
-closeMapPanel();
-renderSidebar();
-};
-btnRow.appendChild(ok);
-const cancel = document.createElement('button');
-cancel.textContent = 'Cancel';
-cancel.style.padding = '4px 8px';
-cancel.style.fontSize = '12px';
-cancel.style.cursor = 'pointer';
-cancel.style.background = '#1e1d49';
-cancel.style.border = '1px solid #777';
-cancel.style.color = '#fff';
-cancel.style.borderRadius = '4px';
-cancel.onclick = closeMapPanel;
-btnRow.appendChild(cancel);
-panel.style.pointerEvents = 'auto';
-panel.style.transform = 'translateX(0)';
-panel.style.opacity = '1';
+  const shell = buildShell();
+  const panel = shell.panel;
+
+  panel.innerHTML = '';
+
+  const title = document.createElement('div');
+  title.textContent = 'Assign "' + targetMiss + '" to:';
+  title.style.fontWeight = '600';
+  title.style.marginBottom = '6px';
+  panel.appendChild(title);
+
+  const hint = document.createElement('div');
+  hint.textContent = 'Search existing words or type a new canonical.';
+  hint.style.marginBottom = '6px';
+  hint.style.opacity = '0.85';
+  panel.appendChild(hint);
+
+  const input = document.createElement('input');
+  input.style.width = '100%';
+  input.style.padding = '6px 8px';
+  input.style.marginBottom = '6px';
+  input.style.border = '1px solid #483a73';
+  input.style.borderRadius = '4px';
+  input.style.background = '#1e1d49';
+  input.style.color = '#e5e9ff';
+  input.placeholder = 'Canonical word or phrase';
+  panel.appendChild(input);
+
+  const list = document.createElement('div');
+  list.style.maxHeight = '60vh';
+  list.style.overflowY = 'auto';
+  list.style.border = '1px solid #483a73';
+  list.style.borderRadius = '4px';
+  list.style.padding = '4px 0';
+  list.style.marginBottom = '8px';
+  panel.appendChild(list);
+
+  function renderList(filter) {
+    list.innerHTML = '';
+    const canon = AC.state.canonicals || [];
+    const f = (filter || '').toLowerCase();
+    let shown = 0;
+
+    canon.forEach(w => {
+      if (f && w.toLowerCase().indexOf(f) === -1) return;
+
+      const row = document.createElement('div');
+      row.textContent = w;
+      row.style.padding = '4px 6px';
+      row.style.cursor = 'pointer';
+      row.style.fontSize = '13px';
+
+      row.onmouseenter = function () { row.style.background = '#483a73'; };
+      row.onmouseleave = function () { row.style.background = 'transparent'; };
+
+      row.onclick = function () {
+        input.value = w;
+      };
+
+      list.appendChild(row);
+      shown++;
+    });
+
+    if (!shown) {
+      const empty = document.createElement('div');
+      empty.textContent = 'No matches.';
+      empty.style.padding = '4px 6px';
+      empty.style.fontSize = '12px';
+      empty.style.opacity = '0.85';
+      list.appendChild(empty);
+    }
+  }
+
+  renderList('');
+  input.addEventListener('input', function () {
+    renderList(input.value);
+  });
+
+  const btnRow = document.createElement('div');
+  btnRow.style.marginTop = '4px';
+  panel.appendChild(btnRow);
+
+  const ok = document.createElement('button');
+  ok.textContent = 'Assign';
+  ok.style.padding = '4px 8px';
+  ok.style.fontSize = '12px';
+  ok.style.cursor = 'pointer';
+  ok.style.background = '#f9772e';
+  ok.style.border = 'none';
+  ok.style.color = '#fff';
+  ok.style.borderRadius = '4px';
+  ok.style.marginRight = '6px';
+
+  ok.onclick = function () {
+    const canonical = (input.value || '').trim();
+    if (!canonical) return;
+    assignMisspelling(targetMiss, canonical);
+    closeMapPanel();
+    renderSidebar();
+  };
+
+  btnRow.appendChild(ok);
+
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Cancel';
+  cancel.style.padding = '4px 8px';
+  cancel.style.fontSize = '12px';
+  cancel.style.cursor = 'pointer';
+  cancel.style.background = '#1e1d49';
+  cancel.style.border = '1px solid #777';
+  cancel.style.color = '#fff';
+  cancel.style.borderRadius = '4px';
+  cancel.onclick = closeMapPanel;
+
+  btnRow.appendChild(cancel);
+
+  panel.style.pointerEvents = 'auto';
+  panel.style.transform = 'translateX(0)';
+  panel.style.opacity = '1';
 }
 function closeMapPanel() {
-const panel = document.getElementById('ac-map-panel');
-if (!panel) return;
-panel.style.pointerEvents = 'none';
-panel.style.transform = 'translateX(100%)';
-panel.style.opacity = '0';
+  const panel = document.getElementById('ac-map-panel');
+  if (!panel) return;
+  panel.style.pointerEvents = 'none';
+  panel.style.transform = 'translateX(100%)';
+  panel.style.opacity = '0';
 }
 function assignMisspelling(miss, canonical) {
-const mLower = (miss || '').toLowerCase();
-const c = canonical.trim();
-if (!mLower || !c) return;
-const map = state.customMap || {};
-if (!map[c]) map[c] = [];
-if (!map[c].some(x => x.toLowerCase() === mLower)) {
-map[c].push(miss);
-}
-state.customMap = map;
-AC.saveCustomMap();
-AC.healDictionaries();
-state.log = (state.log || []).filter(e => e.word !== mLower);
-AC.saveLog();
+  const m = (miss || '').trim();
+  const c = (canonical || '').trim();
+  if (!m || !c) return;
+
+  const mLower = m.toLowerCase();
+
+  if (!state.customMap[c]) state.customMap[c] = [];
+
+  const exists = state.customMap[c].some(x => x.toLowerCase() === mLower);
+  if (!exists) state.customMap[c].push(m);
+
+  AC.saveCustomMap();
+  AC.healDictionaries();
+  AC.rebuildMaps();
+
+  state.log = (state.log || []).filter(e => e.word !== mLower);
+  AC.saveLog();
+
+  renderSidebar();
 }
 function renderSidebar() {
-const sidebar = document.getElementById('ac-sidebar');
-if (!sidebar) return;
-sidebar.innerHTML = '';
-const tabsWrap = document.createElement('div');
-tabsWrap.style.marginBottom = '6px';
-const tabs = [
-{ id: 'log', label: 'Log' },
-{ id: 'recent', label: 'Recent' },
-{ id: 'stats', label: 'Stats' },
-{ id: 'export', label: 'Export' },
-{ id: 'dict', label: 'Dictionary' },
-{ id: 'settings', label: 'Settings' }
-];
-tabs.forEach(t => {
-const b = document.createElement('button');
-b.textContent = t.label;
-b.style.marginRight = '4px';
-b.style.padding = '3px 6px';
-b.style.fontSize = '11px';
-b.style.cursor = 'pointer';
-b.style.borderRadius = '3px';
-if (currentTab === t.id) {
-b.style.background = '#f9772e';
-b.style.color = '#fff';
-b.style.border = 'none';
-} else {
-b.style.background = '#34416a';
-b.style.color = '#fff';
-b.style.border = '1px solid #483a73';
-}
-b.onclick = function(){
-currentTab = t.id;
-renderSidebar();
-};
-tabsWrap.appendChild(b);
-});
-sidebar.appendChild(tabsWrap);
-const content = document.createElement('div');
-content.style.whiteSpace = 'pre-wrap';
-sidebar.appendChild(content);
-if (currentTab === 'log') {
-renderLogTab(content);
-} else if (currentTab === 'recent') {
-renderRecentTab(content);
-} else if (currentTab === 'stats') {
-content.textContent = AC.makeStatsText();
-} else if (currentTab === 'export') {
-renderExportTab(content);
-} else if (currentTab === 'dict') {
-renderDictTab(content);
-} else if (currentTab === 'settings') {
-renderSettingsTab(content);
-}
-const undo = document.createElement('button');
-undo.textContent = 'Undo last correction';
-undo.style.marginTop = '8px';
-undo.style.padding = '3px 6px';
-undo.style.fontSize = '11px';
-undo.style.cursor = 'pointer';
-undo.style.background = '#34416a';
-undo.style.color = '#fff';
-undo.style.border = '1px solid #483a73';
-undo.style.borderRadius = '3px';
-undo.onclick = AC.undoLastCorrection;
-sidebar.appendChild(undo);
+  const sidebar = document.getElementById('ac-sidebar');
+  if (!sidebar) return;
+
+  AC.healDictionaries();
+  AC.rebuildMaps();
+
+  sidebar.innerHTML = '';
+
+  const tabsWrap = document.createElement('div');
+  tabsWrap.style.marginBottom = '6px';
+
+  const tabs = [
+    { id: 'log', label: 'Log' },
+    { id: 'recent', label: 'Recent' },
+    { id: 'stats', label: 'Stats' },
+    { id: 'export', label: 'Export' },
+    { id: 'dict', label: 'Dictionary' },
+    { id: 'settings', label: 'Settings' }
+  ];
+
+  tabs.forEach(t => {
+    const b = document.createElement('button');
+    b.textContent = t.label;
+    b.style.marginRight = '4px';
+    b.style.padding = '3px 6px';
+    b.style.fontSize = '11px';
+    b.style.cursor = 'pointer';
+    b.style.borderRadius = '3px';
+
+    if (currentTab === t.id) {
+      b.style.background = '#f9772e';
+      b.style.color = '#fff';
+      b.style.border = 'none';
+    } else {
+      b.style.background = '#34416a';
+      b.style.color = '#fff';
+      b.style.border = '1px solid #483a73';
+    }
+
+    b.onclick = function () {
+      currentTab = t.id;
+      renderSidebar();
+    };
+
+    tabsWrap.appendChild(b);
+  });
+
+  sidebar.appendChild(tabsWrap);
+
+  const content = document.createElement('div');
+  content.style.whiteSpace = 'pre-wrap';
+  sidebar.appendChild(content);
+
+  if (currentTab === 'log') {
+    renderLogTab(content);
+  } else if (currentTab === 'recent') {
+    renderRecentTab(content);
+  } else if (currentTab === 'stats') {
+    content.textContent = AC.makeStatsText();
+  } else if (currentTab === 'export') {
+    renderExportTab(content);
+  } else if (currentTab === 'dict') {
+    renderDictTab(content);
+  } else if (currentTab === 'settings') {
+    renderSettingsTab(content);
+  }
+
+  const undo = document.createElement('button');
+  undo.textContent = 'Undo last correction';
+  undo.style.marginTop = '8px';
+  undo.style.padding = '3px 6px';
+  undo.style.fontSize = '11px';
+  undo.style.cursor = 'pointer';
+  undo.style.background = '#34416a';
+  undo.style.color = '#fff';
+  undo.style.border = '1px solid #483a73';
+  undo.style.borderRadius = '3px';
+  undo.onclick = AC.undoLastCorrection;
+
+  sidebar.appendChild(undo);
 }
 function renderLogTab(content) {
-const log = state.log || [];
-const grouped = AC.groupLogByWord(log);
-const keys = Object.keys(grouped).sort();
-if (!keys.length) {
-content.textContent = 'No entries yet.';
-return;
-}
-const info = document.createElement('div');
-info.textContent = 'Add as correct word or Assign to a canonical.';
-info.style.marginBottom = '6px';
-info.style.opacity = '0.85';
-content.appendChild(info);
-keys.forEach(word => {
-const row = document.createElement('div');
-row.style.padding = '4px 0';
-row.style.borderBottom = '1px solid #10122f';
-const header = document.createElement('div');
-header.textContent = word + ' (x' + grouped[word].length + ')';
-header.style.marginBottom = '2px';
-header.style.fontWeight = '600';
-row.appendChild(header);
-const btnWrap = document.createElement('div');
-const addBtn = document.createElement('button');
-addBtn.textContent = 'Add as correct';
-addBtn.style.padding = '2px 6px';
-addBtn.style.fontSize = '11px';
-addBtn.style.cursor = 'pointer';
-addBtn.style.background = '#34416a';
-addBtn.style.color = '#fff';
-addBtn.style.border = '1px solid #483a73';
-addBtn.style.borderRadius = '3px';
-addBtn.style.marginRight = '4px';
-addBtn.onclick = function(){
-if (!state.customSet.has(word)) {
-state.customSet.add(word);
-state.customList = Array.from(state.customSet).sort();
-AC.saveCustomDict();
-AC.healDictionaries();
-}
-state.log = state.log.filter(e => e.word !== word);
-AC.saveLog();
-renderSidebar();
-};
-btnWrap.appendChild(addBtn);
-const assignBtn = document.createElement('button');
-assignBtn.textContent = 'Assign';
-assignBtn.style.padding = '2px 6px';
-assignBtn.style.fontSize = '11px';
-assignBtn.style.cursor = 'pointer';
-assignBtn.style.background = '#f9772e';
-assignBtn.style.color = '#fff';
-assignBtn.style.border = 'none';
-assignBtn.style.borderRadius = '3px';
-assignBtn.style.boxShadow = '0 0 6px rgba(249,119,46,0.7)';
-assignBtn.onclick = function(){
-openMapPanel(word);
-};
-btnWrap.appendChild(assignBtn);
-row.appendChild(btnWrap);
-content.appendChild(row);
-});
+  const log = state.log || [];
+  const grouped = AC.groupLogByWord(log);
+  const keys = Object.keys(grouped).sort();
+
+  if (!keys.length) {
+    content.textContent = 'No entries yet.';
+    return;
+  }
+
+  const info = document.createElement('div');
+  info.textContent = 'Add as correct word or Assign to a canonical.';
+  info.style.marginBottom = '6px';
+  info.style.opacity = '0.85';
+  content.appendChild(info);
+
+  keys.forEach(word => {
+    const row = document.createElement('div');
+    row.style.padding = '4px 0';
+    row.style.borderBottom = '1px solid #10122f';
+
+    const header = document.createElement('div');
+    header.textContent = word + ' (x' + grouped[word].length + ')';
+    header.style.marginBottom = '2px';
+    header.style.fontWeight = '600';
+    row.appendChild(header);
+
+    const btnWrap = document.createElement('div');
+
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'Add as correct';
+    addBtn.style.padding = '2px 6px';
+    addBtn.style.fontSize = '11px';
+    addBtn.style.cursor = 'pointer';
+    addBtn.style.background = '#34416a';
+    addBtn.style.color = '#fff';
+    addBtn.style.border = '1px solid #483a73';
+    addBtn.style.borderRadius = '3px';
+    addBtn.style.marginRight = '4px';
+    addBtn.onclick = function () {
+      if (!state.customSet.has(word)) {
+        state.customSet.add(word);
+        state.customList = Array.from(state.customSet).sort();
+        AC.saveCustomDict();
+        AC.healDictionaries();
+      }
+      state.log = state.log.filter(e => e.word !== word);
+      AC.saveLog();
+      renderSidebar();
+    };
+    btnWrap.appendChild(addBtn);
+
+    const assignBtn = document.createElement('button');
+    assignBtn.textContent = 'Assign';
+    assignBtn.style.padding = '2px 6px';
+    assignBtn.style.fontSize = '11px';
+    assignBtn.style.cursor = 'pointer';
+    assignBtn.style.background = '#f9772e';
+    assignBtn.style.color = '#fff';
+    assignBtn.style.border = 'none';
+    assignBtn.style.borderRadius = '3px';
+    assignBtn.style.boxShadow = '0 0 6px rgba(249,119,46,0.7)';
+    assignBtn.onclick = function () {
+      openMapPanel(word);
+    };
+    btnWrap.appendChild(assignBtn);
+
+    row.appendChild(btnWrap);
+    content.appendChild(row);
+  });
 }
 function renderRecentTab(content) {
-const log = (state.log || [])
-.slice()
-.sort((a, b) => b.when.localeCompare(a.when));
-const info = document.createElement('div');
-info.textContent = 'Most recent logged spellings:';
-info.style.marginBottom = '6px';
-info.style.opacity = '0.85';
-content.appendChild(info);
-if (!log.length) {
-const n = document.createElement('div');
-n.textContent = 'No entries yet.';
-content.appendChild(n);
-return;
-}
-log.slice(0, 50).forEach(e => {
-const row = document.createElement('div');
-row.style.padding = '4px 0';
-row.style.borderBottom = '1px solid #10122f';
-const when = document.createElement('div');
-when.textContent = e.when;
-when.style.fontSize = '11px';
-when.style.opacity = '0.8';
-row.appendChild(when);
-const w = document.createElement('div');
-w.textContent = e.word;
-w.style.fontWeight = '600';
-row.appendChild(w);
-if (e.sentence) {
-const s = document.createElement('div');
-s.textContent = '"' + e.sentence + '"';
-s.style.fontSize = '11px';
-s.style.opacity = '0.9';
-row.appendChild(s);
-}
-content.appendChild(row);
-});
+  const log = (state.log || [])
+    .slice()
+    .sort((a, b) => b.when.localeCompare(a.when));
+
+  const info = document.createElement('div');
+  info.textContent = 'Most recent logged spellings:';
+  info.style.marginBottom = '6px';
+  info.style.opacity = '0.85';
+  content.appendChild(info);
+
+  if (!log.length) {
+    const n = document.createElement('div');
+    n.textContent = 'No entries yet.';
+    content.appendChild(n);
+    return;
+  }
+
+  log.slice(0, 50).forEach(e => {
+    const row = document.createElement('div');
+    row.style.padding = '4px 0';
+    row.style.borderBottom = '1px solid #10122f';
+
+    const when = document.createElement('div');
+    when.textContent = e.when;
+    when.style.fontSize = '11px';
+    when.style.opacity = '0.8';
+    row.appendChild(when);
+
+    const w = document.createElement('div');
+    w.textContent = e.word;
+    w.style.fontWeight = '600';
+    row.appendChild(w);
+
+    if (e.sentence) {
+      const s = document.createElement('div');
+      s.textContent = '"' + e.sentence + '"';
+      s.style.fontSize = '11px';
+      s.style.opacity = '0.9';
+      row.appendChild(s);
+    }
+
+    content.appendChild(row);
+  });
 }
 function renderExportTab(content) {
-const txtBtn = document.createElement('button');
-txtBtn.textContent = 'Download TXT';
-txtBtn.style.padding = '3px 8px';
-txtBtn.style.fontSize = '11px';
-txtBtn.style.cursor = 'pointer';
-txtBtn.style.background = '#34416a';
-txtBtn.style.color = '#fff';
-txtBtn.style.border = '1px solid #483a73';
-txtBtn.style.borderRadius = '3px';
-txtBtn.style.marginRight = '6px';
-txtBtn.onclick = AC.exportTXT;
-const csvBtn = document.createElement('button');
-csvBtn.textContent = 'Download CSV';
-csvBtn.style.padding = '3px 8px';
-csvBtn.style.fontSize = '11px';
-csvBtn.style.cursor = 'pointer';
-csvBtn.style.background = '#34416a';
-csvBtn.style.color = '#fff';
-csvBtn.style.border = '1px solid #483a73';
-csvBtn.style.borderRadius = '3px';
-csvBtn.onclick = AC.exportCSV;
-content.appendChild(txtBtn);
-content.appendChild(csvBtn);
+  const txtBtn = document.createElement('button');
+  txtBtn.textContent = 'Download TXT';
+  txtBtn.style.padding = '3px 8px';
+  txtBtn.style.fontSize = '11px';
+  txtBtn.style.cursor = 'pointer';
+  txtBtn.style.background = '#34416a';
+  txtBtn.style.color = '#fff';
+  txtBtn.style.border = '1px solid #483a73';
+  txtBtn.style.borderRadius = '3px';
+  txtBtn.style.marginRight = '6px';
+  txtBtn.onclick = AC.exportTXT;
+
+  const csvBtn = document.createElement('button');
+  csvBtn.textContent = 'Download CSV';
+  csvBtn.style.padding = '3px 8px';
+  csvBtn.style.fontSize = '11px';
+  csvBtn.style.cursor = 'pointer';
+  csvBtn.style.background = '#34416a';
+  csvBtn.style.color = '#fff';
+  csvBtn.style.border = '1px solid #483a73';
+  csvBtn.style.borderRadius = '3px';
+  csvBtn.onclick = AC.exportCSV;
+
+  content.appendChild(txtBtn);
+  content.appendChild(csvBtn);
 }
 function renderDictTab(content) {
-const info = document.createElement('div');
-info.textContent = 'Filter, remove and manage custom dictionary words.';
-info.style.marginBottom = '6px';
-info.style.opacity = '0.85';
-content.appendChild(info);
-const filterInput = document.createElement('input');
-filterInput.placeholder = 'Filter custom words...';
-filterInput.style.width = '100%';
-filterInput.style.padding = '6px 8px';
-filterInput.style.marginBottom = '6px';
-filterInput.style.border = '1px solid #483a73';
-filterInput.style.borderRadius = '4px';
-filterInput.style.background = '#1e1d49';
-filterInput.style.color = '#e5e9ff';
-filterInput.style.fontSize = '13px';
-content.appendChild(filterInput);
-const listBox = document.createElement('div');
-listBox.style.maxHeight = '40vh';
-listBox.style.overflowY = 'auto';
-listBox.style.border = '1px solid #483a73';
-listBox.style.borderRadius = '4px';
-listBox.style.padding = '4px 0';
-content.appendChild(listBox);
-function renderList() {
-const term = (filterInput.value || '').toLowerCase();
-listBox.innerHTML = '';
-const arr = (state.customList || []).slice().sort((a, b) => a.localeCompare(b));
-let shown = 0;
-arr.forEach(w => {
-if (term && w.toLowerCase().indexOf(term) === -1) return;
-shown++;
-const row = document.createElement('div');
-row.style.display = 'flex';
-row.style.alignItems = 'center';
-row.style.justifyContent = 'space-between';
-row.style.padding = '4px 6px';
-row.style.fontSize = '13px';
-const label = document.createElement('span');
-label.textContent = w;
-row.appendChild(label);
-const right = document.createElement('span');
-const caps = state.caps || {};
-const star = document.createElement('span');
-star.textContent = caps[w] ? '⭐' : '☆';
-star.style.cursor = 'pointer';
-star.style.marginRight = '4px';
-star.title = 'Toggle always capitalise';
-star.onclick = function(e){
-e.stopPropagation();
-if (caps[w]) delete caps[w];
-else caps[w] = true;
-AC.saveCaps();
-renderSidebar();
-};
-right.appendChild(star);
-const ext = state.customMap || {};
-const mapped = !!(ext[w] && ext[w].length);
-const icon = document.createElement('span');
-icon.textContent = mapped ? '⚙️' : '⬜';
-icon.style.marginRight = '6px';
-icon.title = mapped ? 'Has custom mapped misspellings' : 'Custom word, no mappings';
-right.appendChild(icon);
-const rm = document.createElement('button');
-rm.textContent = 'Remove';
-rm.style.padding = '2px 6px';
-rm.style.fontSize = '11px';
-rm.style.cursor = 'pointer';
-rm.style.background = '#702020';
-rm.style.color = '#fff';
-rm.style.border = '1px solid #a03333';
-rm.style.borderRadius = '3px';
-rm.onclick = function(e){
-e.stopPropagation();
-if (state.customSet.has(w)) {
-state.customSet.delete(w);
-AC.saveCustomDict();
-AC.healDictionaries();
+  const info = document.createElement('div');
+  info.textContent = 'Filter, remove and manage custom dictionary words.';
+  info.style.marginBottom = '6px';
+  info.style.opacity = '0.85';
+  content.appendChild(info);
+
+  const filterInput = document.createElement('input');
+  filterInput.placeholder = 'Filter custom words...';
+  filterInput.style.width = '100%';
+  filterInput.style.padding = '6px 8px';
+  filterInput.style.marginBottom = '6px';
+  filterInput.style.border = '1px solid #483a73';
+  filterInput.style.borderRadius = '4px';
+  filterInput.style.background = '#1e1d49';
+  filterInput.style.color = '#e5e9ff';
+  filterInput.style.fontSize = '13px';
+  content.appendChild(filterInput);
+
+  const listBox = document.createElement('div');
+  listBox.style.maxHeight = '40vh';
+  listBox.style.overflowY = 'auto';
+  listBox.style.border = '1px solid #483a73';
+  listBox.style.borderRadius = '4px';
+  listBox.style.padding = '4px 0';
+  content.appendChild(listBox);
+
+  function renderList() {
+    const term = (filterInput.value || '').toLowerCase();
+    listBox.innerHTML = '';
+
+    const arr = (state.customList || []).slice().sort();
+    let shown = 0;
+
+    arr.forEach(w => {
+      if (term && w.toLowerCase().indexOf(term) === -1) return;
+      shown++;
+
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.justifyContent = 'space-between';
+      row.style.padding = '4px 6px';
+      row.style.fontSize = '13px';
+
+      const label = document.createElement('span');
+      label.textContent = w;
+      row.appendChild(label);
+
+      const right = document.createElement('span');
+
+      const caps = state.caps || {};
+      const star = document.createElement('span');
+      star.textContent = caps[w] ? '⭐' : '☆';
+      star.style.cursor = 'pointer';
+      star.style.marginRight = '4px';
+      star.onclick = function(e) {
+        e.stopPropagation();
+        if (caps[w]) delete caps[w];
+        else caps[w] = true;
+        AC.saveCaps();
+        renderSidebar();
+      };
+      right.appendChild(star);
+
+      const ext = state.customMap || {};
+      const mapped = !!(ext[w] && ext[w].length);
+      const icon = document.createElement('span');
+      icon.textContent = mapped ? '⚙️' : '⬜';
+      icon.style.marginRight = '6px';
+      right.appendChild(icon);
+
+      const rm = document.createElement('button');
+      rm.textContent = 'Remove';
+      rm.style.padding = '2px 6px';
+      rm.style.fontSize = '11px';
+      rm.style.cursor = 'pointer';
+      rm.style.background = '#702020';
+      rm.style.color = '#fff';
+      rm.style.border = '1px solid #a03333';
+      rm.style.borderRadius = '3px';
+      rm.onclick = function(e) {
+        e.stopPropagation();
+        if (state.customSet.has(w)) {
+          state.customSet.delete(w);
+          AC.saveCustomDict();
+          AC.healDictionaries();
+        }
+        if (state.caps && state.caps[w]) {
+          delete state.caps[w];
+          AC.saveCaps();
+        }
+        renderSidebar();
+      };
+      right.appendChild(rm);
+
+      row.appendChild(right);
+
+      row.onmouseenter = function() { row.style.background = '#483a73'; };
+      row.onmouseleave = function() { row.style.background = 'transparent'; };
+
+      listBox.appendChild(row);
+    });
+
+    if (!shown) {
+      const empty = document.createElement('div');
+      empty.textContent = 'No matches.';
+      empty.style.fontSize = '12px';
+      empty.style.opacity = '0.85';
+      empty.style.padding = '4px 6px';
+      listBox.appendChild(empty);
+    }
+  }
+
+  filterInput.addEventListener('input', renderList);
+  renderList();
+
+  const mapTitle = document.createElement('div');
+  mapTitle.textContent = 'Add custom mapping:';
+  mapTitle.style.marginTop = '10px';
+  mapTitle.style.marginBottom = '4px';
+  content.appendChild(mapTitle);
+
+  const missInput = document.createElement('input');
+  missInput.placeholder = 'Incorrect word or phrase';
+  missInput.style.width = '100%';
+  missInput.style.padding = '6px 8px';
+  missInput.style.marginBottom = '4px';
+  missInput.style.border = '1px solid #483a73';
+  missInput.style.borderRadius = '4px';
+  missInput.style.background = '#1e1d49';
+  missInput.style.color = '#e5e9ff';
+  content.appendChild(missInput);
+
+  const correctInput = document.createElement('input');
+  correctInput.placeholder = 'Canonical (correct form)';
+  correctInput.style.width = '100%';
+  correctInput.style.padding = '6px 8px';
+  correctInput.style.marginBottom = '6px';
+  correctInput.style.border = '1px solid #483a73';
+  correctInput.style.borderRadius = '4px';
+  correctInput.style.background = '#1e1d49';
+  correctInput.style.color = '#e5e9ff';
+  content.appendChild(correctInput);
+
+  const mapBtn = document.createElement('button');
+  mapBtn.textContent = 'Save mapping';
+  mapBtn.style.padding = '4px 8px';
+  mapBtn.style.fontSize = '12px';
+  mapBtn.style.cursor = 'pointer';
+  mapBtn.style.background = '#f9772e';
+  mapBtn.style.color = '#fff';
+  mapBtn.style.border = 'none';
+  mapBtn.style.borderRadius = '4px';
+  mapBtn.onclick = function() {
+    const miss = (missInput.value || '').trim();
+    const canonical = (correctInput.value || '').trim();
+    if (!miss || !canonical) return;
+
+    assignMisspelling(miss, canonical);
+    AC.healDictionaries();
+
+    missInput.value = '';
+    correctInput.value = '';
+    renderSidebar();
+  };
+
+  content.appendChild(mapBtn);
 }
-if (state.caps && state.caps[w]) {
-delete state.caps[w];
-AC.saveCaps();
-}
-renderSidebar();
-};
-right.appendChild(rm);
-row.appendChild(right);
-row.onmouseenter = function(){ row.style.background = '#483a73'; };
-row.onmouseleave = function(){ row.style.background = 'transparent'; };
-listBox.appendChild(row);
-});
-if (!shown) {
-const empty = document.createElement('div');
-empty.textContent = 'No matches.';
-empty.style.fontSize = '12px';
-empty.style.opacity = '0.85';
-empty.style.padding = '4px 6px';
-listBox.appendChild(empty);
-}
-}
-filterInput.addEventListener('input', renderList);
-renderList();
-const mapTitle = document.createElement('div');
-mapTitle.textContent = 'Add custom mapping:';
-mapTitle.style.marginTop = '10px';
-mapTitle.style.marginBottom = '4px';
-content.appendChild(mapTitle);
-const missInput = document.createElement('input');
-missInput.placeholder = 'Incorrect word or phrase';
-missInput.style.width = '100%';
-missInput.style.padding = '6px 8px';
-missInput.style.marginBottom = '4px';
-missInput.style.border = '1px solid #483a73';
-missInput.style.borderRadius = '4px';
-missInput.style.background = '#1e1d49';
-missInput.style.color = '#e5e9ff';
-content.appendChild(missInput);
-const correctInput = document.createElement('input');
-correctInput.placeholder = 'Canonical (correct form)';
-correctInput.style.width = '100%';
-correctInput.style.padding = '6px 8px';
-correctInput.style.marginBottom = '6px';
-correctInput.style.border = '1px solid #483a73';
-correctInput.style.borderRadius = '4px';
-correctInput.style.background = '#1e1d49';
-correctInput.style.color = '#e5e9ff';
-content.appendChild(correctInput);
-const mapBtn = document.createElement('button');
-mapBtn.textContent = 'Save mapping';
-mapBtn.style.padding = '4px 8px';
-mapBtn.style.fontSize = '12px';
-mapBtn.style.cursor = 'pointer';
-mapBtn.style.background = '#f9772e';
-mapBtn.style.color = '#fff';
-mapBtn.style.border = 'none';
-mapBtn.style.borderRadius = '4px';
-mapBtn.style.boxShadow = '0 0 6px rgba(249,119,46,0.7)';
-mapBtn.onclick = function(){
-const miss = (missInput.value || '').trim();
-const canonical = (correctInput.value || '').trim();
-if (!miss || !canonical) {
-alert('Enter both incorrect and canonical values.');
-return;
-}
-assignMisspelling(miss, canonical);
-AC.healDictionaries();
-missInput.value = '';
-correctInput.value = '';
-renderSidebar();
-};
-content.appendChild(mapBtn);
 }
 function renderSettingsTab(content) {
-const dTitle = document.createElement('div');
-dTitle.textContent = 'Custom dictionary (raw):';
-dTitle.style.marginBottom = '4px';
-content.appendChild(dTitle);
-const dList = document.createElement('div');
-dList.textContent = state.customList.length ? state.customList.join(', ') : '(none)';
-dList.style.marginBottom = '8px';
-dList.style.fontSize = '11px';
-dList.style.opacity = '0.9';
-content.appendChild(dList);
-const clearLog = document.createElement('button');
-clearLog.textContent = 'Clear log';
-clearLog.style.padding = '3px 8px';
-clearLog.style.fontSize = '11px';
-clearLog.style.cursor = 'pointer';
-clearLog.style.background = '#702020';
-clearLog.style.color = '#fff';
-clearLog.style.border = '1px solid #a03333';
-clearLog.style.borderRadius = '3px';
-clearLog.style.marginRight = '6px';
-clearLog.onclick = function(){
-if (confirm('Clear spelling log?')) {
-state.log = [];
-AC.saveLog();
-renderSidebar();
-}
-};
-const clearDict = document.createElement('button');
-clearDict.textContent = 'Clear custom dictionary';
-clearDict.style.padding = '3px 8px';
-clearDict.style.fontSize = '11px';
-clearDict.style.cursor = 'pointer';
-clearDict.style.background = '#704d20';
-clearDict.style.color = '#fff';
-clearDict.style.border = '1px solid #a06d33';
-clearDict.style.borderRadius = '3px';
-clearDict.onclick = function(){
-if (confirm('Clear custom dictionary?')) {
-state.customSet = new Set();
-state.customList = [];
-AC.saveCustomDict();
-AC.healDictionaries();
-renderSidebar();
-}
-};
-content.appendChild(clearLog);
-content.appendChild(clearDict);
+  const dTitle = document.createElement('div');
+  dTitle.textContent = 'Custom dictionary (raw):';
+  dTitle.style.marginBottom = '4px';
+  content.appendChild(dTitle);
+
+  const dList = document.createElement('div');
+  dList.textContent = state.customList.length ? state.customList.join(', ') : '(none)';
+  dList.style.marginBottom = '8px';
+  dList.style.fontSize = '11px';
+  dList.style.opacity = '0.9';
+  content.appendChild(dList);
+
+  const clearLog = document.createElement('button');
+  clearLog.textContent = 'Clear log';
+  clearLog.style.padding = '3px 8px';
+  clearLog.style.fontSize = '11px';
+  clearLog.style.cursor = 'pointer';
+  clearLog.style.background = '#702020';
+  clearLog.style.color = '#fff';
+  clearLog.style.border = '1px solid #a03333';
+  clearLog.style.borderRadius = '3px';
+  clearLog.style.marginRight = '6px';
+  clearLog.onclick = function () {
+    if (confirm('Clear spelling log?')) {
+      state.log = [];
+      AC.saveLog();
+      renderSidebar();
+    }
+  };
+
+  const clearDict = document.createElement('button');
+  clearDict.textContent = 'Clear custom dictionary';
+  clearDict.style.padding = '3px 8px';
+  clearDict.style.fontSize = '11px';
+  clearDict.style.cursor = 'pointer';
+  clearDict.style.background = '#704d20';
+  clearDict.style.color = '#fff';
+  clearDict.style.border = '1px solid #a06d33';
+  clearDict.style.borderRadius = '3px';
+  clearDict.onclick = function () {
+    if (confirm('Clear custom dictionary?')) {
+      state.customSet = new Set();
+      state.customList = [];
+      AC.saveCustomDict();
+      AC.healDictionaries();
+      renderSidebar();
+    }
+  };
+
+  content.appendChild(clearLog);
+  content.appendChild(clearDict);
 }
 injectStyles();
 })();
 function attachToEditable(div) {
-if (div._acAttached) return;
-div._acAttached = true;
-div.addEventListener('keydown', function(e) {
-const key = e.key;
-if ([' ', 'Enter', '.', ',', '!', '?'].includes(key)) {
-setTimeout(() => {
-AC.correctInDiv(div, key);
-}, 0);
-}
-});
+  if (div._acAttached) return;
+  div._acAttached = true;
+
+  div.addEventListener('keydown', function (e) {
+    const key = e.key;
+
+    if ([' ', 'Enter', '.', ',', '!', '?'].includes(key)) {
+      setTimeout(() => {
+        AC.correctInDiv(div, key);
+      }, 0);
+    }
+  });
 }
 function scanForEditables() {
-const all = document.querySelectorAll('[contenteditable="true"],[contenteditable="plaintext-only"]');
-all.forEach(div => attachToEditable(div));
+  const all = document.querySelectorAll('[contenteditable="true"],[contenteditable="plaintext-only"]');
+  all.forEach(div => attachToEditable(div));
 }
+
 const mo = new MutationObserver(() => {
-scanForEditables();
+  scanForEditables();
 });
+
 mo.observe(document.body, { childList: true, subtree: true });
-scanForEditables();
+scanForEditables()
 })();
