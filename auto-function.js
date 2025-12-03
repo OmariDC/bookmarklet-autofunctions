@@ -1,11 +1,13 @@
 (function(){
-
-if (!window.__acVersion || window.__acVersion !== '2025-12-01') {
-  window.__acVersion = '2025-12-01';
+  
   const url = 'https://raw.githubusercontent.com/OmariDC/bookmarklet-autofunctions/main/auto-function.js?_=' + Date.now();
-  fetch(url).then(r => r.text()).then(code => { eval(code); });
-  return;
-}
+  if (window.__acLoading) return;
+  window.__acLoading = true;
+  fetch(url)
+    .then(r => r.text())
+    .then(code => { eval(code); })
+    .finally(() => { window.__acLoading = false; });
+})();
 'use strict';
 const AC = window.AC = window.AC || {};
 function loadJSON(key, fallback) {
