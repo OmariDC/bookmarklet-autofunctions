@@ -2,7 +2,7 @@
 
 if (!window.__acVersion || window.__acVersion !== '2025-12-01') {
   window.__acVersion = '2025-12-01';
-  const url = 'https://raw.githubusercontent.com/omaridc/bookmarklet-autofunctions/main/auto-function-source.js?_=' + Date.now();
+  const url = 'https://raw.githubusercontent.com/OmariDC/bookmarklet-autofunctions/main/auto-function.js?_=' + Date.now();
   fetch(url).then(r => r.text()).then(code => { eval(code); });
   return;
 }
