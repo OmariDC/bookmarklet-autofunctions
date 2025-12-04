@@ -1,14 +1,5 @@
 (function(){
 
-  // always-load GitHub version
-  const url = 'https://raw.githubusercontent.com/OmariDC/bookmarklet-autofunctions/main/auto-function.js?_=' + Date.now();
-  if (!window.__acAutoLoad) {
-    window.__acAutoLoad = true;
-    fetch(url)
-      .then(r => r.text())
-      .then(code => { eval(code); });
-  }
-
 'use strict';
 const AC = window.AC = window.AC || {};
 function loadJSON(key, fallback) {
