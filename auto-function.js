@@ -46,8 +46,6 @@ AC.state.flatMap    = {};
 AC.state.multi      = [];
 AC.state.canonicals = [];
 
-/* SAFETY GUARD: ensure attachToEditable exists early to avoid crashes if called before defined */
-AC.attachToEditable = AC.attachToEditable || {};
 
 /* ============================
    LEVEL 2 - SAVE HELPERS
@@ -607,11 +605,13 @@ AC.correctInDiv = function(div, triggerKey){
    LEVEL 9 - MUTATION OBSERVER
    ============================ */
 
+/* scanEditables now matches any contenteditable attribute (including empty) */
 AC.scanEditables = function(){
     const items = document.querySelectorAll('[contenteditable]');
     items.forEach(div => AC.attachToEditable(div));
 };
 
+/* Create observer prior to bootstrap so dynamic editors are always caught */
 AC.mo = new MutationObserver(()=>AC.scanEditables());
 AC.mo.observe(document.body, { childList: true, subtree: true });
 
