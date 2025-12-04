@@ -1,11 +1,4 @@
 (function(){
-
-if (!window.__acVersion || window.__acVersion !== '2025-12-01') {
-  window.__acVersion = '2025-12-01';
-  const url = 'https://raw.githubusercontent.com/omaridc/bookmarklet-autofunctions/main/auto-function-source.js?_=' + Date.now();
-  fetch(url).then(r => r.text()).then(code => { eval(code); });
-  return;
-}
 'use strict';
 const AC = window.AC = window.AC || {};
 function loadJSON(key, fallback) {
@@ -280,7 +273,7 @@ const m = multi[i];
 const phrase = m.key;
 const canonical = m.canonical;
 const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const re = new RegExp("(" + esc + ")([']s|s['])?([.,!?])?$");
+const re = new RegExp('(' + esc + ')(['\']s|s['\'])?([.,!?])?$');
 const match = lowerBefore.match(re);
 if (!match) continue;
 const poss = match[2] || '';
@@ -314,7 +307,7 @@ break;
 }
 if (idx < 0) return;
 const rawToken = parts[idx];
-const tokenMatch = rawToken.match(/^(.+?)([']s|s['])?([.,!?])?$/);
+const tokenMatch = rawToken.match(/^(.+?)(['\']s|s['\'])?([.,!?])?$/);
 const core = tokenMatch ? tokenMatch[1] : rawToken;
 const poss = tokenMatch && tokenMatch[2] ? tokenMatch[2] : '';
 const punct = tokenMatch && tokenMatch[3] ? tokenMatch[3] : '';
