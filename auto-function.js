@@ -1553,7 +1553,7 @@ function renderSettingsTab(content) {
   content.appendChild(clearDict);
 }
 injectStyles();
-})();
+} // end initUI
 function attachToEditable(div) {
   if (div._acAttached) return;
   div._acAttached = true;
@@ -1578,5 +1578,7 @@ const mo = new MutationObserver(() => {
 });
 
 mo.observe(document.body, { childList: true, subtree: true });
-scanForEditables()
+
+initUI();
+scanForEditables();
 })();
