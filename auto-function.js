@@ -605,9 +605,11 @@ AC.correctInDiv = function(div, triggerKey){
    LEVEL 9 - MUTATION OBSERVER
    ============================ */
 
-/* scanEditables now matches any contenteditable attribute (including empty) */
-AC.scanEditables = function(){
-    const items = document.querySelectorAll('[contenteditable]');
+/* scanEditables now matches Quill editors and role=textbox nodes */
+AC.scanEditables = function() {
+    const items = document.querySelectorAll(
+        '.ql-editor, div[role="textbox"], [contenteditable="true"], [contenteditable="plaintext-only"]'
+    );
     items.forEach(div => AC.attachToEditable(div));
 };
 
@@ -1065,7 +1067,7 @@ AC.renderDictTab = function(box){
     filter.style.marginBottom = '6px';
     filter.style.border = '1px solid #483a73';
     filter.style.background = '#1e1d49';
-    filter.style.color = '#e5e9ff';
+    filter.style.color = '#e5eff';
     filter.style.borderRadius = '4px';
     box.appendChild(filter);
 
@@ -1161,59 +1163,6 @@ AC.renderDictTab = function(box){
     draw();
 
 
-    /* ADD CUSTOM MAPPING */
-
-    const title = document.createElement('div');
-    title.textContent = 'Add custom mapping:';
-    title.style.marginTop = '8px';
-    title.style.marginBottom = '4px';
-    box.appendChild(title);
-
-    const miss = document.createElement('input');
-    miss.placeholder = 'Incorrect word or phrase';
-    miss.style.width = '100%';
-    miss.style.padding = '6px 8px';
-    miss.style.marginBottom = '4px';
-    miss.style.border = '1px solid #483a73';
-    miss.style.background = '#1e1d49';
-    miss.style.color = '#e5e9ff';
-    miss.style.borderRadius = '4px';
-    box.appendChild(miss);
-
-    const corr = document.createElement('input');
-    corr.placeholder = 'Canonical form';
-    corr.style.width = '100%';
-    corr.style.padding = '6px 8px';
-    corr.style.marginBottom = '6px';
-    corr.style.border = '1px solid #483a73';
-    corr.style.background = '#1e1d49';
-    corr.style.color = '#e5e9ff';
-    corr.style.borderRadius = '4px';
-    box.appendChild(corr);
-
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save mapping';
-    saveBtn.style.padding = '4px 8px';
-    saveBtn.style.cursor = 'pointer';
-    saveBtn.style.background = '#f9772e';
-    saveBtn.style.border = 'none';
-    saveBtn.style.color = '#fff';
-    saveBtn.style.borderRadius = '4px';
-    saveBtn.onclick = ()=>{
-        const m = miss.value.trim();
-        const c = corr.value.trim();
-        if (!m || !c) return;
-
-        AC.assignMissFromDict(m, c);
-        miss.value = '';
-        corr.value = '';
-        AC.renderSidebar();
-    };
-
-    box.appendChild(saveBtn);
-};
-
-
 /* ============================
    SETTINGS TAB
    ============================ */
@@ -1307,7 +1256,8 @@ AC.openMapPanel = function(targetMiss){
     inp.style.border = '1px solid #483a73';
     inp.style.borderRadius = '4px';
     inp.style.background = '#1e1d49';
-    inp.style.color = '#e5e9ff';
+    inp.style.color = '#e5eff';
+    inp.style.borderRadius = '4px';
     map.appendChild(inp);
 
     const list = document.createElement('div');
