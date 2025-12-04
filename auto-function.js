@@ -147,7 +147,15 @@ delete customMap[cor];
 cleanedMap = true;
 continue;
 }
-const isKnownCanonical = true;
+const isKnownCanonical =
+Object.prototype.hasOwnProperty.call(base, cor) ||
+AC.state.customSet.has(cor) ||
+Object.prototype.hasOwnProperty.call(caps, cor);
+if (!isKnownCanonical) {
+delete customMap[cor];
+cleanedMap = true;
+continue;
+}
 customMap[cor] = customMap[cor].filter(m => m && m.trim().length > 1);
 }
 if (cleanedMap) changed = true;
@@ -452,14 +460,13 @@ b.id = 'ac-toggle';
 b.style.position = 'fixed';
 b.style.left = '14px';
 b.style.bottom = '14px';
-b.style.width = '24px';
-b.style.height = '24px';
-b.style.aspectRatio = '1/1';
+b.style.width = '20px';
+b.style.height = '20px';
 b.style.background = '#f9772e';
 b.style.borderRadius = '50%';
 b.style.boxShadow = '0 0 8px rgba(249,119,46,0.6)';
 b.style.cursor = 'pointer';
-b.style.zIndex = '2147483647';
+b.style.zIndex = '999999';
 b.title = 'Spelling assistant - click or press Alt+T';
 b.onclick = function() {
 AC.toggleSidebar();
@@ -1039,7 +1046,6 @@ addBtn.style.marginRight = '4px';
 addBtn.onclick = function(){
 if (!state.customSet.has(word)) {
 state.customSet.add(word);
-state.customList = Array.from(state.customSet).sort();
 AC.saveCustomDict();
 AC.healDictionaries();
 }
@@ -1274,7 +1280,6 @@ alert('Enter both incorrect and canonical values.');
 return;
 }
 assignMisspelling(miss, canonical);
-AC.healDictionaries();
 missInput.value = '';
 correctInput.value = '';
 renderSidebar();
