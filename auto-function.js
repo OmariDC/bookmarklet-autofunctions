@@ -46,6 +46,8 @@ AC.state.flatMap    = {};
 AC.state.multi      = [];
 AC.state.canonicals = [];
 
+/* SAFETY GUARD: ensure attachToEditable exists early to avoid crashes if called before defined */
+AC.attachToEditable = AC.attachToEditable || {};
 
 /* ============================
    LEVEL 2 - SAVE HELPERS
@@ -437,6 +439,16 @@ AC.undoLastCorrection = function(){
     AC.lastCorrection = null;
 };
 
+/* ---------- ATTACH TO EDITABLE (REQUIRED FOR AUTOCORRECT TO RUN) ---------- */
+
+AC.attachToEditable = function(div){
+    if (div._acAttached) return;
+    div._acAttached = true;
+
+    div.addEventListener('keydown', function(e){
+        AC.correctInDiv(div, e.key);
+    });
+};
 
 /* ============================
    LEVEL 8 - AUTOCORRECT ENGINE
@@ -591,17 +603,6 @@ AC.correctInDiv = function(div, triggerKey){
         };
     }
 };
-/* ---------- ATTACH TO EDITABLE (REQUIRED FOR AUTOCORRECT TO RUN) ---------- */
-
-AC.attachToEditable = function(div){
-    if (div._acAttached) return;
-    div._acAttached = true;
-
-    div.addEventListener('keydown', function(e){
-        AC.correctInDiv(div, e.key);
-    });
-};
-
 /* ============================
    LEVEL 9 - MUTATION OBSERVER
    ============================ */
