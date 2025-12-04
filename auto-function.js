@@ -1,4 +1,6 @@
 (function(){
+if (window.__acLoaded) return;
+window.__acLoaded = true;
 
 'use strict';
 /* ============================
@@ -599,14 +601,13 @@ AC.attachToEditable = function(div){
         AC.correctInDiv(div, e.key);
     });
 };
+
 /* ============================
    LEVEL 9 - MUTATION OBSERVER
    ============================ */
 
 AC.scanEditables = function(){
-    const items = document.querySelectorAll(
-        '[contenteditable="true"], [contenteditable="plaintext-only"]'
-    );
+    const items = document.querySelectorAll('[contenteditable]');
     items.forEach(div => AC.attachToEditable(div));
 };
 
@@ -1437,9 +1438,11 @@ AC.bootstrap = function(){
     AC.rebuildMaps();
     AC.cleanNumericLogs();
     AC.ensureToggleButton();
-    AC.scanEditables();
+    AC.scanEditables();  // MUST be after attachToEditable definition
     AC.buildShell();
 };
 
 /* RUN IMMEDIATELY */
 AC.bootstrap();
+
+})();
