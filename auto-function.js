@@ -390,7 +390,8 @@ AC.matchMultiWord = function(text) {
   const lower = text.toLowerCase();
   for (let i = 0; i < AC.state.multi.length; i++) {
     const pair = AC.state.multi[i];
-    const pattern = new RegExp(`\\b${AC.escapeRegex(pair.src)}$`);
+    const escapedSrc = AC.escapeRegex(pair.src);
+    const pattern = new RegExp("\\b" + escapedSrc + "$");
     const match = lower.match(pattern);
     if (match) {
       const startIndex = lower.search(pattern);
@@ -413,16 +414,25 @@ AC.undoLast = function() {
 };
 
 AC.replaceTextContent = function(root, text) {
+  const cursors = [];
+  root.querySelectorAll && root.querySelectorAll('.ql-cursor').forEach(node => {
+    cursors.push({ node, parent: node.parentNode, next: node.nextSibling });
+  });
   const range = document.createRange();
   range.selectNodeContents(root);
   range.deleteContents();
   range.insertNode(document.createTextNode(text));
+  cursors.forEach(ref => {
+    if (!ref.parent) return;
+    if (ref.next && ref.next.parentNode === ref.parent) ref.parent.insertBefore(ref.node, ref.next);
+    else ref.parent.appendChild(ref.node);
+  });
 };
 
 AC.applyCorrections = function(root, triggerChar) {
   const caretPos = AC.getCaretIndex(root);
   if (caretPos < 0) return;
-  const text = root.innerText;
+  const text = root.textContent;
   const { before, after } = AC.splitTextByCaret(text, caretPos);
 
   const newlineTrailMatch = before.match(/(\n+)$/);
@@ -500,7 +510,7 @@ AC.handlePaste = function(event) {
   const root = event.currentTarget;
   setTimeout(() => {
     const caret = AC.getCaretIndex(root);
-    const text = root.innerText;
+    const text = root.textContent;
     AC.recordUndoState(root, text, text, caret);
     AC.applyCorrections(root, ' ');
   }, 0);
@@ -508,7 +518,7 @@ AC.handlePaste = function(event) {
 
 AC.handleBlur = function(event) {
   const root = event.currentTarget;
-  const text = root.innerText;
+  const text = root.textContent;
   const sentence = AC.extractSentenceContext(text);
   const words = text.split(/\s+/);
   words.forEach(w => AC.recordUnknown(w, sentence));
@@ -553,6 +563,7 @@ AC.observeMutations = function() {
         if (m.target.matches(AC.editorSelector)) {
           AC.bindEditor(m.target);
         }
+        m.target.querySelectorAll && m.target.querySelectorAll(AC.editorSelector).forEach(child => AC.bindEditor(child));
       }
       m.addedNodes.forEach(node => {
         if (!(node instanceof HTMLElement)) return;
