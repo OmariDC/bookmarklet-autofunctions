@@ -1,1399 +1,591 @@
 (function(){
-if (window.__acLoaded) return;
-window.__acLoaded = true;
+  if (window.__acLoaded) return;
+  window.__acLoaded = true;
+  'use strict';
 
-'use strict';
-/* ============================
-   LEVEL 1 - GLOBAL + STORAGE
-   ============================ */
+  /* =============================
+     STORAGE + STATE
+     ============================= */
+  const STORAGE = {
+    LOG: 'ac_spell_log_v4',
+    DICT: 'ac_custom_dict_v4',
+    MAP: 'ac_custom_map_v4',
+    CAPS: 'ac_caps_rules_v4'
+  };
 
-const AC = window.AC = window.AC || {};
-
-function loadJSON(key, fallback){
-    try{
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : JSON.parse(fallback);
-    } catch(e){
-        return JSON.parse(fallback);
+  const loadJSON = (key, fallback) => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : JSON.parse(JSON.stringify(fallback));
+    } catch (e) {
+      return JSON.parse(JSON.stringify(fallback));
     }
-}
+  };
+  const saveJSON = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  };
 
-function saveJSON(key, value){
-    try{
-        localStorage.setItem(key, JSON.stringify(value));
-    } catch(e){}
-}
+  const state = {
+    log: loadJSON(STORAGE.LOG, []),
+    customList: loadJSON(STORAGE.DICT, []),
+    customMap: loadJSON(STORAGE.MAP, {}),
+    caps: loadJSON(STORAGE.CAPS, {}),
+    customSet: new Set(),
+    flatMap: {},
+    multi: [],
+    canonicals: [],
+    recent: [],
+    listeners: new WeakMap(),
+    observer: null,
+    open: false
+  };
 
-const STORAGE = {
-    LOG:  'ac_spell_log_v3',
-    DICT: 'ac_custom_dict_v3',
-    MAP:  'ac_custom_map_v3',
-    CAPS: 'ac_caps_rules_v3'
-};
+  /* =============================
+     BASE DICTIONARIES
+     ============================= */
+  const baseDict = {
+    'Abarth': ['abart', 'abarht', 'abarth?'],
+    'Alfa Romeo': ['alfaromeo', 'alpha romeo', 'alfa romo'],
+    'Citroën': ['citroen', 'citreon'],
+    'DS': ['ds', 'd.s.'],
+    'DS Automobiles': ['ds automoblies', 'ds automobils'],
+    'Fiat': ['fiatt', 'fiadt'],
+    'Jeep': ['jepp', 'jeap'],
+    'Leapmotor': ['leap motor', 'leapmotors'],
+    'Peugeot': ['peugot', 'peugeut', 'peugeoet'],
+    'Vauxhall': ['vauxel', 'vauxall', 'vaxhall'],
+    'Stellantis': ['stellantus', 'stellentis'],
+    'Stellantis &You': ['stellantis and you', 'stellantis & you'],
+    'Motability': ['motablity', 'motability'],
+    'LivePerson': ['live person', 'livepersom', 'lp chat']
+  };
 
-AC.state = AC.state || {};
-AC.state.log        = loadJSON(STORAGE.LOG,  '[]');
-AC.state.customList = loadJSON(STORAGE.DICT, '[]');
-AC.state.customMap  = loadJSON(STORAGE.MAP,  '{}');
-AC.state.caps       = loadJSON(STORAGE.CAPS, '{}');
+  const baseMulti = [
+    { src: 'test drive', tgt: 'test drive' },
+    { src: 'thank you', tgt: 'Thank you' },
+    { src: 'good morning', tgt: 'Good morning' },
+    { src: 'good afternoon', tgt: 'Good afternoon' },
+    { src: 'good evening', tgt: 'Good evening' },
+    { src: 'live person', tgt: 'LivePerson' }
+  ];
 
-AC.state.customList = AC.state.customList
-    .filter(w => typeof w === 'string' && w.trim().length > 1)
-    .sort();
-
-AC.state.customSet  = new Set(AC.state.customList);
-AC.state.flatMap    = {};
-AC.state.multi      = [];
-AC.state.canonicals = [];
-
-
-/* ============================
-   LEVEL 2 - SAVE HELPERS
-   ============================ */
-
-AC.saveLog = function(){
-    AC.state.log = (AC.state.log || []).filter(e =>
-        e && e.word && typeof e.word === 'string' && e.word.trim().length >= 2
-    );
-    saveJSON(STORAGE.LOG, AC.state.log);
-};
-
-AC.saveCustomDict = function(){
-    AC.state.customList = Array.from(new Set(AC.state.customSet)).sort();
-    saveJSON(STORAGE.DICT, AC.state.customList);
-};
-
-AC.saveCustomMap = function(){
-    saveJSON(STORAGE.MAP, AC.state.customMap || {});
-};
-
-AC.saveCaps = function(){
-    saveJSON(STORAGE.CAPS, AC.state.caps || {});
-};
-
-
-/* ============================
-   LEVEL 3 - CAPS RULES
-   ============================ */
-
-AC.ensureDefaultCaps = function(){
-    const caps = AC.state.caps;
-
+  /* =============================
+     CAPS RULES
+     ============================= */
+  const ensureDefaultCaps = () => {
     const defaults = [
-        'Abarth','Alfa Romeo','Citroën','DS','DS Automobiles','Fiat','Jeep','Leapmotor',
-        'Peugeot','Vauxhall','Stellantis','Stellantis &You',
-        'London','UK','Motability',
-        'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday',
-        'January','February','March','April','May','June','July','August','September',
-        'October','November','December'
+      'Abarth','Alfa Romeo','Citroën','DS','DS Automobiles','Fiat','Jeep','Leapmotor',
+      'Peugeot','Vauxhall','Stellantis','Stellantis &You',
+      'London','UK','Motability',
+      'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday',
+      'January','February','March','April','May','June','July','August','September',
+      'October','November','December'
     ];
+    defaults.forEach(w=>{ if(!(w in state.caps)) state.caps[w] = true; });
+    saveJSON(STORAGE.CAPS, state.caps);
+  };
+  ensureDefaultCaps();
 
-    defaults.forEach(w=>{
-        if (!Object.prototype.hasOwnProperty.call(caps, w))
-            caps[w] = true;
-    });
-
-    AC.saveCaps();
-};
-
-AC.ensureDefaultCaps();
-
-
-/* ============================
-   SENTENCE RULES
-   ============================ */
-
-function isSentenceStart(text){
+  /* =============================
+     UTILITIES
+     ============================= */
+  const isSentenceStart = (text) => {
     if (!text.trim()) return true;
     return /[.!?]\s*$/.test(text);
-}
+  };
 
-function applyCaps(canonical, start){
-    const caps = AC.state.caps || {};
-    if (caps[canonical]) return canonical;
-    if (start){
-        return canonical.charAt(0).toUpperCase() + canonical.slice(1);
-    }
+  const adjustCase = (canonical, sample, start) => {
+    if (state.caps[canonical]) return canonical;
+    if (sample === sample.toUpperCase()) return canonical.toUpperCase();
+    if (sample[0] === sample[0].toUpperCase()) return canonical.charAt(0).toUpperCase() + canonical.slice(1);
+    if (start) return canonical.charAt(0).toUpperCase() + canonical.slice(1);
     return canonical;
-}
-/* ============================
-   LEVEL 4 - DICTIONARY ENGINE
-   ============================ */
+  };
 
-/* ---------- BUILT-IN BASE DICTIONARY ---------- */
-
-AC.baseDict = {
-    'Abarth': ['abart','abarht','abarth?'],
-    'Alfa Romeo': ['alfaromeo','alpha romeo','alfa romo'],
-    'Citroën': ['citroen','citreon'],
-    'DS': ['ds','d.s.'],
-    'DS Automobiles': ['ds automoblies','ds automobils'],
-    'Fiat': ['fiatt','fiadt'],
-    'Jeep': ['jepp','jeap'],
-    'Leapmotor': ['leap motor','leapmotors'],
-    'Peugeot': ['peugot','peugeut','peugeoet'],
-    'Vauxhall': ['vauxel','vauxall','vaxhall'],
-    'Stellantis': ['stellantus','stellentis'],
-    'Stellantis &You':['stellantis and you','stellantis & you']
-};
-
-
-/* ---------- HEAL DICTIONARIES ---------- */
-
-AC.healDictionaries = function(){
-
-    /* CLEAN CUSTOM DICTIONARY */
-    const list = AC.state.customList || [];
-    const cleaned = list.filter(w => w && typeof w === 'string' && w.trim().length > 1);
-    const set = new Set(cleaned);
-
-    AC.state.customSet = set;
-    AC.state.customList = Array.from(set).sort();
-
-    /* CLEAN CUSTOM MAP */
-    const map = AC.state.customMap || {};
-    for (const c in map){
-        if (!c || !c.trim()){
-            delete map[c];
-            continue;
-        }
-        map[c] = map[c].filter(m => m && m.trim().length > 1);
+  const normalizeTime = (word) => {
+    const clean = word.replace(/[^0-9apm:]/gi, '').toLowerCase();
+    const m = clean.match(/^([0-2]?\d)(?::([0-5]\d))?(am|pm)?$/);
+    if (!m) return null;
+    let h = parseInt(m[1], 10);
+    let min = m[2] ? parseInt(m[2], 10) : 0;
+    if (h > 24 || min > 59) return null;
+    if (m[3]) {
+      const suffix = m[3];
+      if (suffix === 'am') {
+        if (h === 12) h = 0;
+      } else if (suffix === 'pm') {
+        if (h !== 12) h += 12;
+      }
     }
+    if (h === 24) h = 0;
+    return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+  };
 
-    AC.state.customMap = map;
+  const cleanLog = () => {
+    state.log = (state.log || []).filter(e=>e && e.word && typeof e.word === 'string');
+    saveJSON(STORAGE.LOG, state.log);
+  };
 
-    /* SAVE UPDATED STRUCTURES */
-    AC.saveCustomDict();
-    AC.saveCustomMap();
-};
+  /* =============================
+     MAP REBUILD
+     ============================= */
+  const rebuildMaps = () => {
+    state.customList = Array.from(new Set((state.customList || []).filter(w => typeof w === 'string' && w.trim().length > 1))).sort();
+    state.customSet = new Set(state.customList);
 
+    const flat = {};
+    const canonicalSet = new Set();
 
-/* ---------- REBUILD LOOKUP TABLES ---------- */
-
-AC.rebuildMaps = function(){
-
-    const base      = AC.baseDict || {};
-    const customMap = AC.state.customMap || {};
-    const customSet = AC.state.customSet;
-
-    const flat      = {};
-    const multi     = [];
-    const canonS    = new Set();
-
-    /* Add canonical word */
-    function addCanon(c){
-        if (!c) return;
-        canonS.add(c);
-
-        const lc = c.toLowerCase();
-        if (!flat[lc]) flat[lc] = c;
-
-        if (c.includes(' '))
-            multi.push({ key: lc, canonical: c });
-    }
-
-    /* Add misspelling */
-    function addMiss(m, c){
-        if (!m || !c) return;
-
-        const lm = m.toLowerCase();
-        if (!flat[lm]) flat[lm] = c;
-
-        if (m.includes(' '))
-            multi.push({ key: lm, canonical: c });
-    }
-
-    /* --- BASE DICT --- */
-    for (const c in base){
-        addCanon(c);
-        (base[c] || []).forEach(m => addMiss(m, c));
-    }
-
-    /* --- CUSTOM MAP --- */
-    for (const c in customMap){
-        addCanon(c);
-        (customMap[c] || []).forEach(m => addMiss(m, c));
-    }
-
-    /* --- CUSTOM CORRECT WORDS --- */
-    customSet.forEach(c => addCanon(c));
-
-    /* Save final state */
-    AC.state.flatMap    = flat;
-    AC.state.multi      = multi;
-    AC.state.canonicals = Array.from(canonS).sort();
-};
-
-
-/* ---------- ASSIGN MAPPING (MISSPELL → CANONICAL) ---------- */
-
-AC.assignMissFromDict = function(miss, canonical){
-
-    const m = miss.trim();
-    const c = canonical.trim();
-    if (!m || !c) return;
-
-    const lower = m.toLowerCase();
-
-    /* Ensure canonical entry exists */
-    if (!AC.state.customMap[c])
-        AC.state.customMap[c] = [];
-
-    /* Avoid duplicates */
-    const exists = AC.state.customMap[c]
-        .some(x => x.toLowerCase() === lower);
-
-    if (!exists){
-        AC.state.customMap[c].push(m);
-    }
-
-    /* Save & rebuild */
-    AC.saveCustomMap();
-    AC.healDictionaries();
-    AC.rebuildMaps();
-
-    /* Remove from log once assigned */
-    AC.state.log = (AC.state.log || []).filter(e => e.word !== lower);
-    AC.saveLog();
-};
-/* ============================
-   LEVEL 5 - TIME ENGINE
-   ============================ */
-
-AC.isValidTime = function(str){
-    if (!str) return false;
-    const s = str.trim().toLowerCase();
-
-    /* 3pm / 10am */
-    if (/^\d{1,2}\s*(am|pm)$/.test(s)) return true;
-
-    /* 14:30 */
-    if (/^\d{1,2}:\d{2}$/.test(s)){
-        const [h,m] = s.split(':').map(Number);
-        return h>=0 && h<=23 && m>=0 && m<=59;
-    }
-
-    /* 3:15pm */
-    if (/^\d{1,2}:\d{2}\s*(am|pm)$/.test(s)){
-        const m = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)/);
-        if (!m) return false;
-        const hh = Number(m[1]);
-        const mm = Number(m[2]);
-        return hh>=1 && hh<=12 && mm>=0 && mm<=59;
-    }
-
-    return false;
-};
-
-AC.normaliseTime = function(str){
-    if (!str) return str;
-    const s = str.trim().toLowerCase();
-
-    /* 3pm */
-    if (/^\d{1,2}\s*(am|pm)$/.test(s)){
-        const m = s.match(/(\d{1,2})\s*(am|pm)/);
-        let h = Number(m[1]);
-        const ap = m[2];
-
-        if (ap === 'pm' && h !== 12) h += 12;
-        if (ap === 'am' && h === 12) h = 0;
-
-        return (h<10?'0':'')+h + ':00';
-    }
-
-    /* 14:30 */
-    if (/^\d{1,2}:\d{2}$/.test(s)){
-        const [h,m] = s.split(':').map(Number);
-        return (h<10?'0':'')+h + ':' + (m<10?'0':'')+m;
-    }
-
-    /* 3:15pm */
-    if (/^\d{1,2}:\d{2}\s*(am|pm)$/.test(s)){
-        const m = s.match(/(\d{1,2}):(\d{2})\s*(am|pm)/);
-        let hh = Number(m[1]);
-        const mm = Number(m[2]);
-        const ap = m[3];
-
-        if (ap === 'pm' && hh !== 12) hh += 12;
-        if (ap === 'am' && hh === 12) hh = 0;
-
-        return (hh<10?'0':'')+hh + ':' + (mm<10?'0':'')+mm;
-    }
-
-    return str;
-};
-
-AC.cleanNumericLogs = function(){
-    AC.state.log = (AC.state.log || []).filter(e=>{
-        if (!e || !e.word) return false;
-
-        /* only allow digits if part of valid time */
-        if (/\d/.test(e.word)){
-            return AC.isValidTime(e.word);
-        }
-        return true;
+    Object.entries(baseDict).forEach(([canon, arr]) => {
+      canonicalSet.add(canon);
+      flat[canon.toLowerCase()] = canon;
+      (arr||[]).forEach(a => { if (a) flat[a.toLowerCase()] = canon; });
     });
 
-    AC.saveLog();
-};
+    state.customSet.forEach(canon => { canonicalSet.add(canon); flat[canon.toLowerCase()] = canon; });
 
+    Object.entries(state.customMap || {}).forEach(([miss, canon]) => {
+      if (!canon) return;
+      canonicalSet.add(canon);
+      flat[miss.toLowerCase()] = canon;
+    });
 
-/* ============================
-   LEVEL 6 - LOGGING ENGINE
-   ============================ */
+    state.flatMap = flat;
+    state.multi = baseMulti.map(m => ({...m, src: m.src.toLowerCase()}));
+    state.canonicals = Array.from(canonicalSet).sort();
+    saveJSON(STORAGE.DICT, state.customList);
+    saveJSON(STORAGE.MAP, state.customMap);
+  };
+  rebuildMaps();
+  cleanLog();
 
-function todayStr(){
-    return new Date().toISOString().slice(0,10);
-}
+  /* =============================
+     LOGGING
+     ============================= */
+  const logUnknown = (word, sentence) => {
+    if (!word || word.length < 2) return;
+    const lower = word.toLowerCase();
+    if (state.flatMap[lower] || state.customSet.has(word) || state.canonicals.includes(word)) return;
+    const t = normalizeTime(word);
+    if (t) return;
+    state.log.push({ word: word, when: Date.now(), sentence: sentence || '' });
+    saveJSON(STORAGE.LOG, state.log);
+    renderLog();
+    renderStats();
+  };
 
-AC.captureSentence = function(){
+  /* =============================
+     TEXT + CARET HELPERS
+     ============================= */
+  const caretIndex = (root) => {
     const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) return '';
+    if (!sel.rangeCount) return -1;
+    const range = sel.getRangeAt(0).cloneRange();
+    let index = -1;
+    try {
+      const pre = range.cloneRange();
+      pre.selectNodeContents(root);
+      pre.setEnd(sel.focusNode, sel.focusOffset);
+      index = pre.toString().length;
+    } catch (e) { index = -1; }
+    return index;
+  };
 
-    const r = sel.getRangeAt(0);
-    const container = r.commonAncestorContainer;
-    const root = container.nodeType === 3 ? container.parentNode : container;
-
-    const text = root.innerText || root.textContent || '';
-    if (!text) return '';
-
-    const caret = r.startOffset;
-    const cleaned = text.replace(/\s+/g, ' ');
-
-    let start = caret;
-    while (start > 0 && !/[.!?]/.test(cleaned[start-1])) start--;
-
-    let end = caret;
-    while (end < cleaned.length && !/[.!?]/.test(cleaned[end])) end++;
-
-    return cleaned.slice(start, end+1).trim();
-};
-
-AC.recordUnknown = function(word){
-    if (!word) return;
-
-    const w = word.trim().toLowerCase();
-    if (w.length < 2) return;
-
-    /* If starts with digit, ignore unless a valid time */
-    if (/^\d/.test(w) && !AC.isValidTime(w)) return;
-    if (AC.isValidTime(w)) return;
-
-    /* Known word */
-    if (AC.state.flatMap[w] || AC.state.customSet.has(w)) return;
-
-    const today = todayStr();
-    const exists = (AC.state.log || []).some(e=>e.word === w && e.when.slice(0,10) === today);
-    if (exists) return;
-
-    AC.state.log.push({
-        word: w,
-        when: new Date().toISOString(),
-        sentence: AC.captureSentence()
-    });
-
-    AC.saveLog();
-};
-
-
-/* ============================
-   LEVEL 7 - CARET ENGINE
-   ============================ */
-
-AC.setCaret = function(div, index){
-    const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+  const findTextPosition = (root, offset) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
     let node = walker.nextNode();
-    let count = 0;
-
-    while(node){
-        const next = count + node.nodeValue.length;
-        if (next >= index){
-            const range = document.createRange();
-            const sel = window.getSelection();
-
-            range.setStart(node, Math.max(0, index - count));
-            range.collapse(true);
-
-            sel.removeAllRanges();
-            sel.addRange(range);
-            return;
-        }
-        count = next;
-        node = walker.nextNode();
+    let pos = offset;
+    while (node) {
+      const len = node.nodeValue.length;
+      if (pos <= len) return { node, offset: pos };
+      pos -= len;
+      node = walker.nextNode();
     }
-};
+    return null;
+  };
 
-/* UNDO SYSTEM */
-
-AC.lastCorrection = null;
-
-AC.undoLastCorrection = function(){
-    const c = AC.lastCorrection;
-    if (!c || !c.div) return;
-
-    c.div.innerText = c.before;
-    AC.setCaret(c.div, Math.min(c.caretBefore, c.before.length));
-
-    AC.lastCorrection = null;
-};
-
-/* ---------- ATTACH TO EDITABLE (REQUIRED FOR AUTOCORRECT TO RUN) ---------- */
-
-AC.attachToEditable = function(div){
-    if (div._acAttached) return;
-    div._acAttached = true;
-
-    div.addEventListener('keydown', function(e){
-        AC.correctInDiv(div, e.key);
-    });
-};
-
-/* ============================
-   LEVEL 8 - AUTOCORRECT ENGINE
-   ============================ */
-
-AC.correctInDiv = function(div, triggerKey){
-
-    const valid = [' ', 'Enter', '.', ',', '!', '?'];
-    if (!valid.includes(triggerKey)) return;
-
+  const replaceSlice = (root, start, end, text) => {
+    const startPos = findTextPosition(root, start);
+    const endPos = findTextPosition(root, end);
+    if (!startPos || !endPos) return;
+    const range = document.createRange();
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+    range.deleteContents();
+    const node = document.createTextNode(text);
+    range.insertNode(node);
     const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) return;
-    const rng = sel.getRangeAt(0);
-    if (!rng.collapsed) return;
+    sel.removeAllRanges();
+    const caret = document.createRange();
+    caret.setStart(node, text.length);
+    caret.collapse(true);
+    sel.addRange(caret);
+  };
 
-    const fullText = div.innerText;
-    const flat = AC.state.flatMap;
-    const multi = AC.state.multi;
+  /* =============================
+     AUTOCORRECT ENGINE
+     ============================= */
+  const triggers = new Set([' ', 'Enter', '.', ',', '!', '?']);
 
-    /* extract what's before caret */
-    const r = rng.cloneRange();
-    r.selectNodeContents(div);
-    r.setEnd(rng.endContainer, rng.endOffset);
+  const processText = (root) => {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !root.contains(sel.focusNode)) return;
+    const text = root.innerText || root.textContent || '';
+    const caret = caretIndex(root);
+    if (caret < 0) return;
+    const before = text.slice(0, caret);
+    const after = text.slice(caret);
 
-    let typed = r.toString();
-    const delim = triggerKey === 'Enter' ? '\n' : triggerKey;
-    if (!typed.endsWith(delim)) return;
+    const lastChunkMatch = before.match(/([^\s]+)[\s]*$/);
+    if (!lastChunkMatch) return;
+    const lastChunk = lastChunkMatch[1];
+    let trailing = '';
+    const punctMatch = lastChunk.match(/([A-Za-z'’:0-9]+)([.,!?]*)$/);
+    if (punctMatch) trailing = punctMatch[2] || '';
+    const rawWord = punctMatch ? punctMatch[1] : lastChunk;
+    const lowerWord = rawWord.toLowerCase();
 
-    const before = typed.slice(0, -1);
-    const after = fullText.slice(typed.length);
-    const original = before + delim + after;
-
-    const lowerBefore = before.toLowerCase();
-
-
-    /* ---------- MULTI-WORD MATCHING ---------- */
-
-    for (let i = 0; i < multi.length; i++){
-        const { key, canonical } = multi[i];
-        const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-        const re = new RegExp(`(?:^|\\s)(${esc})(?=$|\\s|[.,!?])`, 'i');
-        const match = lowerBefore.match(re);
-
-        if (match){
-            const startIndex = match.index;
-            const endIndex = startIndex + match[1].length;
-
-            const isStart = isSentenceStart(before.slice(0, startIndex));
-            const corrected = applyCaps(canonical, isStart);
-
-            const newBefore =
-                before.slice(0, startIndex) +
-                corrected +
-                before.slice(endIndex);
-
-            const newFull = newBefore + delim + after;
-
-            div.innerText = newFull;
-            AC.setCaret(div, newBefore.length + 1);
-
-            AC.lastCorrection = {
-                div, before: original, after: newFull,
-                caretBefore: typed.length,
-                caretAfter: newBefore.length + 1
-            };
-
-            return;
+    // Multi-word
+    const words = before.trim().split(/\s+/).map(w=>w.replace(/[.,!?]+$/,''));
+    for (let len = Math.min(4, words.length); len >= 2; len--) {
+      const slice = words.slice(-len);
+      const phrase = slice.join(' ').toLowerCase();
+      const rule = state.multi.find(m => m.src === phrase);
+      if (rule) {
+        const startIdx = before.toLowerCase().lastIndexOf(phrase);
+        const newBefore = before.slice(0, startIdx) + rule.tgt;
+        const newCaret = newBefore.length + (caret - before.length);
+        const updated = newBefore + after;
+        root.innerText = updated;
+        const pos = findTextPosition(root, newCaret);
+        if (pos) {
+          const sel2 = window.getSelection();
+          sel2.removeAllRanges();
+          const r = document.createRange();
+          r.setStart(pos.node, pos.offset);
+          r.collapse(true);
+          sel2.addRange(r);
         }
-    }
-
-
-    /* ---------- SINGLE TOKEN ---------- */
-
-    const parts = before.split(/(\s+)/);
-    let idx = -1;
-
-    for (let i = parts.length - 1; i >= 0; i--){
-        if (parts[i].trim() !== ''){
-            idx = i;
-            break;
-        }
-    }
-    if (idx < 0) return;
-
-    const token = parts[idx].match(/^(.+?)(['’]s|s['’])?([.,!?])?$/);
-
-    const core  = token ? token[1] : parts[idx];
-    const poss  = token && token[2] ? token[2] : '';
-    const punct = token && token[3] ? token[3] : '';
-
-
-    /* ---------- TIME NORMALISATION ---------- */
-
-    if (AC.isValidTime(core)){
-        const norm = AC.normaliseTime(core);
-
-        parts[idx] = norm + poss + punct;
-
-        const newBefore = parts.join('');
-        const newFull = newBefore + delim + after;
-
-        div.innerText = newFull;
-        AC.setCaret(div, newBefore.length + 1);
-
-        AC.lastCorrection = {
-            div, before: original, after: newFull,
-            caretBefore: typed.length,
-            caretAfter: newBefore.length + 1
-        };
-
+        state.recent.unshift({ from: phrase, to: rule.tgt, at: Date.now() });
+        state.recent = state.recent.slice(0, 25);
+        renderRecent();
+        renderStats();
         return;
+      }
     }
 
-
-    /* ---------- UNKNOWN WORD LOGGING ---------- */
-
-    AC.recordUnknown(core);
-
-    const lowerCore = core.toLowerCase();
-    let canonical = flat[lowerCore] || null;
-
-    /* Special case: i → I */
-    if (!canonical && lowerCore === 'i'){
-        canonical = 'I';
+    // Time normalization
+    const normalizedTime = normalizeTime(lowerWord);
+    if (normalizedTime) {
+      if (normalizedTime !== rawWord) {
+        const startIndex = before.length - rawWord.length - trailing.length;
+        replaceSlice(root, startIndex, startIndex + rawWord.length, normalizedTime);
+        state.recent.unshift({ from: rawWord, to: normalizedTime, at: Date.now() });
+        state.recent = state.recent.slice(0, 25);
+        renderRecent();
+        renderStats();
+      }
+      return;
     }
 
-    const isStart = isSentenceStart(before);
-
-
-    /* ---------- FINAL REPLACEMENT ---------- */
-
-    const replacement = canonical
-        ? applyCaps(canonical, isStart)
-        : (isStart
-            ? core.charAt(0).toUpperCase() + core.slice(1)
-            : core);
-
-    if (replacement !== core){
-        parts[idx] = replacement + poss + punct;
-
-        const newBefore = parts.join('');
-        const newFull = newBefore + delim + after;
-
-        div.innerText = newFull;
-        AC.setCaret(div, newBefore.length + 1);
-
-        AC.lastCorrection = {
-            div, before: original, after: newFull,
-            caretBefore: typed.length,
-            caretAfter: newBefore.length + 1
-        };
-    }
-};
-/* ============================
-   LEVEL 9 - MUTATION OBSERVER
-   ============================ */
-
-/* scanEditables now matches Quill editors and role=textbox nodes */
-AC.scanEditables = function() {
-    const items = document.querySelectorAll(
-        '.ql-editor, div[role="textbox"], [contenteditable="true"], [contenteditable="plaintext-only"]'
-    );
-    items.forEach(div => AC.attachToEditable(div));
-};
-
-/* Create observer prior to bootstrap so dynamic editors are always caught */
-AC.mo = new MutationObserver(()=>AC.scanEditables());
-AC.mo.observe(document.body, { childList: true, subtree: true });
-
-
-/* ============================
-   LEVEL 10 - UI CORE
-   ============================ */
-
-AC.ensureRoot = function(){
-    let root = document.getElementById('ac-root');
-    if (root) return root;
-
-    root = document.createElement('div');
-    root.id = 'ac-root';
-    root.style.position = 'fixed';
-    root.style.left = '0';
-    root.style.top = '0';
-    root.style.width = '280px';
-    root.style.height = '100%';
-    root.style.pointerEvents = 'none';
-    root.style.zIndex = '2147483646';
-
-    document.body.appendChild(root);
-    return root;
-};
-
-AC.ensureToggleButton = function(){
-    if (AC._toggleInit) return;
-    AC._toggleInit = true;
-
-    if (document.getElementById('ac-toggle')) return;
-
-    const b = document.createElement('div');
-    b.id = 'ac-toggle';
-    b.style.position = 'fixed';
-    b.style.left = '14px';
-    b.style.bottom = '14px';
-    b.style.width = '26px';
-    b.style.height = '26px';
-    b.style.borderRadius = '50%';
-    b.style.background = '#f9772e';
-    b.style.boxShadow = '0 0 8px rgba(249,119,46,0.6)';
-    b.style.cursor = 'pointer';
-    b.style.zIndex = '2147483647';
-
-    b.title = 'Autocorrect — click or press Alt+T';
-    b.onclick = ()=>AC.toggleSidebar();
-
-    document.body.appendChild(b);
-};
-
-AC.buildShell = function(){
-
-    const root = AC.ensureRoot();
-    root.style.pointerEvents = 'none';
-
-    let sidebar = document.getElementById('ac-sidebar');
-    if (!sidebar){
-        sidebar = document.createElement('div');
-        sidebar.id = 'ac-sidebar';
-        sidebar.style.position = 'absolute';
-        sidebar.style.left = '0';
-        sidebar.style.top = '0';
-        sidebar.style.width = '280px';
-        sidebar.style.height = '100%';
-        sidebar.style.background = '#1e1d49';
-        sidebar.style.color = '#e5e9ff';
-        sidebar.style.padding = '8px';
-        sidebar.style.fontSize = '12px';
-        sidebar.style.overflowY = 'auto';
-        sidebar.style.borderRight = '2px solid #483a73';
-        sidebar.style.boxShadow = '0 0 10px rgba(0,0,0,0.4)';
-        sidebar.style.transform = 'translateX(-100%)';
-        sidebar.style.opacity = '0';
-        sidebar.style.transition = 'transform .16s ease-out, opacity .16s ease-out';
-        root.appendChild(sidebar);
+    const canonical = state.flatMap[lowerWord];
+    const startSentence = isSentenceStart(before.slice(0, before.length - rawWord.length - trailing.length));
+    let replacement = null;
+    if (lowerWord === 'i') {
+      replacement = 'I';
+    } else if (canonical) {
+      replacement = adjustCase(canonical, rawWord, startSentence);
     }
 
-    let map = document.getElementById('ac-map-panel');
-    if (!map){
-        map = document.createElement('div');
-        map.id = 'ac-map-panel';
-        map.style.position = 'fixed';
-        map.style.right = '0';
-        map.style.top = '0';
-        map.style.width = '320px';
-        map.style.height = '100%';
-        map.style.background = '#34416a';
-        map.style.color = '#e5e9ff';
-        map.style.padding = '10px';
-        map.style.overflowY = 'auto';
-        map.style.borderLeft = '2px solid #483a73';
-        map.style.boxShadow = '0 0 10px rgba(0,0,0,0.4)';
-        map.style.transform = 'translateX(100%)';
-        map.style.opacity = '0';
-        map.style.transition = 'transform .18s ease-out, opacity .18s ease-out';
-        map.style.pointerEvents = 'none';
-        map.style.zIndex = '2147483647';
-        document.body.appendChild(map);
+    if (replacement && replacement !== rawWord) {
+      const startIndex = before.length - rawWord.length - trailing.length;
+      replaceSlice(root, startIndex, startIndex + rawWord.length, replacement);
+      state.recent.unshift({ from: rawWord, to: replacement, at: Date.now() });
+      state.recent = state.recent.slice(0, 25);
+      renderRecent();
+      renderStats();
+      return;
     }
 
-    return { root, sidebar, map };
-};
-
-
-/* ============================
-   OPEN / CLOSE SIDEBAR
-   ============================ */
-
-let _sidebarOpen = false;
-
-AC.openSidebar = function(){
-    const { root, sidebar } = AC.buildShell();
-    root.style.pointerEvents = 'auto';
-    sidebar.style.transform = 'translateX(0)';
-    sidebar.style.opacity = '1';
-    _sidebarOpen = true;
-    AC.renderSidebar();
-};
-
-AC.closeSidebar = function(){
-    const sidebar = document.getElementById('ac-sidebar');
-    const root = document.getElementById('ac-root');
-
-    if (root) root.style.pointerEvents = 'none';
-    if (sidebar){
-        sidebar.style.transform = 'translateX(-100%)';
-        sidebar.style.opacity = '0';
+    if (!canonical && lowerWord.length > 2) {
+      const sentence = before.split(/[.!?]/).pop()?.trim() || rawWord;
+      logUnknown(rawWord, sentence);
     }
+  };
 
-    AC.closeMapPanel();
-    _sidebarOpen = false;
-};
+  const unifiedHandler = (e) => {
+    if (!triggers.has(e.key)) return;
+    const el = e.currentTarget;
+    setTimeout(() => processText(el), 0);
+  };
 
-AC.toggleSidebar = function(){
-    if (_sidebarOpen) AC.closeSidebar();
-    else AC.openSidebar();
-};
+  const attachEditor = (el) => {
+    if (state.listeners.has(el)) return;
+    el.addEventListener('keydown', unifiedHandler, true);
+    state.listeners.set(el, true);
+  };
 
+  const scanEditors = () => {
+    const nodes = document.querySelectorAll('.ql-editor, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], div[role="textbox"]');
+    nodes.forEach(attachEditor);
+  };
 
-/* ============================
-   HOTKEY: Alt + T
-   ============================ */
+  /* =============================
+     UI COMPONENTS
+     ============================= */
+  const styleTag = document.createElement('style');
+  styleTag.textContent = `
+  #ac-toggle{position:fixed;left:12px;bottom:12px;width:38px;height:38px;border-radius:50%;background:#f9772e;color:#1e1d49;border:none;box-shadow:0 3px 10px rgba(0,0,0,.3);cursor:pointer;z-index:2147483646;font-weight:700;font-size:16px;}
+  #ac-panel{position:fixed;left:12px;bottom:60px;width:320px;max-height:80vh;background:#1e1d49;color:#e5e9ff;border:1px solid #483a73;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.35);font-family:Inter,system-ui,sans-serif;font-size:13px;overflow:hidden;z-index:2147483646;display:none;}
+  #ac-panel.ac-open{display:flex;flex-direction:column;}
+  #ac-panel header{padding:10px 12px;background:#483a73;color:#e5e9ff;font-weight:700;display:flex;align-items:center;justify-content:space-between;}
+  #ac-tabs{display:flex;border-bottom:1px solid #483a73;}
+  #ac-tabs button{flex:1;padding:8px 6px;background:none;border:none;color:#e5e9ff;cursor:pointer;font-weight:600;}
+  #ac-tabs button.active{background:#483a73;}
+  #ac-content{padding:10px;overflow:auto;flex:1;}
+  #ac-content .row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:6px;}
+  #ac-content .pill{padding:3px 6px;background:#483a73;border-radius:6px;font-weight:600;}
+  #ac-content .btn{background:#f9772e;border:none;color:#1e1d49;padding:4px 8px;border-radius:6px;cursor:pointer;font-weight:700;}
+  #ac-content input, #ac-content textarea{width:100%;background:#101029;border:1px solid #483a73;color:#e5e9ff;border-radius:6px;padding:6px;font-size:13px;}
+  #ac-map-panel{position:fixed;right:-360px;top:50%;transform:translateY(-50%);width:320px;max-height:80vh;background:#1e1d49;color:#e5e9ff;border:1px solid #483a73;border-radius:10px 0 0 10px;box-shadow:-6px 0 18px rgba(0,0,0,.35);transition:right .2s ease;z-index:2147483646;display:flex;flex-direction:column;}
+  #ac-map-panel.open{right:0;}
+  #ac-map-panel header{padding:10px 12px;background:#483a73;font-weight:700;display:flex;align-items:center;justify-content:space-between;}
+  #ac-map-list{flex:1;overflow:auto;padding:8px 10px;}
+  #ac-map-list button{width:100%;text-align:left;background:#101029;border:1px solid #483a73;color:#e5e9ff;padding:6px 8px;border-radius:6px;margin-bottom:6px;cursor:pointer;}
+  #ac-map-actions{padding:8px 10px;border-top:1px solid #483a73;display:flex;gap:6px;}
+  #ac-map-actions .btn{flex:1;}
+  #ac-panel small{color:#9da4d4;}
+  `;
+  document.head.appendChild(styleTag);
 
-if (!AC._hotkeyBound){
-    AC._hotkeyBound = true;
+  const toggleBtn = document.createElement('button');
+  toggleBtn.id = 'ac-toggle';
+  toggleBtn.textContent = 'AC';
+  document.body.appendChild(toggleBtn);
 
-    window.addEventListener('keydown', (e)=>{
-        if (e.altKey && e.code === 'KeyT'){
-            e.preventDefault();
-            e.stopPropagation();
-            AC.toggleSidebar();
-        }
+  const panel = document.createElement('div');
+  panel.id = 'ac-panel';
+  panel.innerHTML = `
+    <header><span>Autocorrect</span><span style="font-size:12px">Alt+T</span></header>
+    <div id="ac-tabs"></div>
+    <div id="ac-content"></div>
+  `;
+  document.body.appendChild(panel);
+
+  const tabs = [
+    { id:'log', label:'Log' },
+    { id:'recent', label:'Recent' },
+    { id:'stats', label:'Stats' },
+    { id:'export', label:'Export' },
+    { id:'dict', label:'Dictionary' },
+    { id:'settings', label:'Settings' }
+  ];
+
+  const tabBar = panel.querySelector('#ac-tabs');
+  const content = panel.querySelector('#ac-content');
+  let activeTab = 'log';
+
+  tabs.forEach(t=>{
+    const b = document.createElement('button');
+    b.textContent = t.label;
+    b.dataset.id = t.id;
+    b.className = t.id === activeTab ? 'active' : '';
+    b.onclick = () => { activeTab = t.id; updateTabs(); };
+    tabBar.appendChild(b);
+  });
+
+  const updateTabs = () => {
+    tabBar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.id === activeTab));
+    if (activeTab === 'log') renderLog();
+    else if (activeTab === 'recent') renderRecent();
+    else if (activeTab === 'stats') renderStats();
+    else if (activeTab === 'export') renderExport();
+    else if (activeTab === 'dict') renderDict();
+    else renderSettings();
+  };
+
+  const openPanel = () => { state.open = true; panel.classList.add('ac-open'); updateTabs(); };
+  const closePanel = () => { state.open = false; panel.classList.remove('ac-open'); };
+  const togglePanel = () => { state.open ? closePanel() : openPanel(); };
+
+  toggleBtn.addEventListener('click', togglePanel);
+  window.addEventListener('keydown', e => { if (e.altKey && (e.key==='t' || e.key==='T')) { e.preventDefault(); togglePanel(); } });
+
+  /* =============================
+     LOG TAB
+     ============================= */
+  const renderLog = () => {
+    if (activeTab !== 'log') return;
+    const grouped = {};
+    state.log.forEach(item => { const k = item.word; grouped[k] = grouped[k] || []; grouped[k].push(item); });
+    const entries = Object.entries(grouped).sort((a,b)=>b[1].length - a[1].length);
+    content.innerHTML = '';
+    if (!entries.length) { content.innerHTML = '<small>No unknown words logged.</small>'; return; }
+    entries.forEach(([word,list])=>{
+      const row = document.createElement('div'); row.className='row';
+      const left = document.createElement('div');
+      left.innerHTML = `<div><span class="pill">${list.length}</span> ${word}</div><small>${list[0].sentence||''}</small>`;
+      const btns = document.createElement('div'); btns.style.display='flex'; btns.style.gap='4px';
+      const addBtn = document.createElement('button'); addBtn.className='btn'; addBtn.textContent='Add';
+      addBtn.onclick=()=>{ state.customSet.add(word); state.customList = Array.from(state.customSet).sort(); rebuildMaps(); renderDict(); renderStats(); };
+      const mapBtn = document.createElement('button'); mapBtn.className='btn'; mapBtn.textContent='Map';
+      mapBtn.onclick=()=>openMapping(word);
+      btns.append(addBtn,mapBtn);
+      row.append(left,btns);
+      content.appendChild(row);
     });
-}
+  };
 
-
-/* ============================
-   LEVEL 11 - SIDEBAR RENDER SYSTEM
-   ============================ */
-
-AC._currentTab = 'log';
-
-AC.renderSidebar = function(){
-    AC.healDictionaries();
-    AC.rebuildMaps();
-
-    const sidebar = document.getElementById('ac-sidebar');
-    if (!sidebar) return;
-
-    sidebar.innerHTML = '';
-
-    /* TABS */
-    const tabsWrap = document.createElement('div');
-    tabsWrap.style.marginBottom = '6px';
-
-    const tabs = [
-        { id:'log', label:'Log' },
-        { id:'recent', label:'Recent' },
-        { id:'stats', label:'Stats' },
-        { id:'export', label:'Export' },
-        { id:'dict', label:'Dictionary' },
-        { id:'settings', label:'Settings' }
-    ];
-
-    tabs.forEach(t=>{
-        const b = document.createElement('button');
-        b.textContent = t.label;
-        b.style.marginRight = '4px';
-        b.style.padding = '3px 6px';
-        b.style.fontSize = '11px';
-        b.style.cursor = 'pointer';
-        b.style.borderRadius = '3px';
-
-        if (AC._currentTab === t.id){
-            b.style.background = '#f9772e';
-            b.style.color = '#fff';
-            b.style.border = 'none';
-        } else {
-            b.style.background = '#34416a';
-            b.style.color = '#fff';
-            b.style.border = '1px solid #483a73';
-        }
-
-        b.onclick = ()=>{
-            AC._currentTab = t.id;
-            AC.renderSidebar();
-        };
-
-        tabsWrap.appendChild(b);
+  /* =============================
+     RECENT TAB
+     ============================= */
+  const renderRecent = () => {
+    if (activeTab !== 'recent') return;
+    content.innerHTML = '';
+    if (!state.recent.length) { content.innerHTML='<small>No recent corrections.</small>'; return; }
+    state.recent.slice(0,30).forEach(r=>{
+      const row=document.createElement('div');row.className='row';
+      const when = new Date(r.at).toLocaleTimeString();
+      row.innerHTML = `<div><strong>${r.from}</strong> → ${r.to}<br><small>${when}</small></div>`;
+      content.appendChild(row);
     });
-
-    sidebar.appendChild(tabsWrap);
-
-    /* CONTENT AREA */
-    const box = document.createElement('div');
-    box.style.whiteSpace = 'pre-wrap';
-    sidebar.appendChild(box);
-
-    const tab = AC._currentTab;
-
-    if (tab === 'log')       return AC.renderLogTab(box);
-    if (tab === 'recent')    return AC.renderRecentTab(box);
-    if (tab === 'stats')     return AC.renderStatsTab(box);
-    if (tab === 'export')    return AC.renderExportTab(box);
-    if (tab === 'dict')      return AC.renderDictTab(box);
-    if (tab === 'settings')  return AC.renderSettingsTab(box);
-};
-
-
-/* ============================
-   LOG TAB
-   ============================ */
-
-AC.groupLogByWord = function(log){
-    const out = {};
-    log.forEach(e=>{
-        if (!out[e.word]) out[e.word] = [];
-        out[e.word].push(e);
-    });
-    return out;
-};
-
-AC.renderLogTab = function(box){
-    const log = AC.state.log || [];
-    const grouped = AC.groupLogByWord(log);
-    const keys = Object.keys(grouped).sort();
-
-    if (!keys.length){
-        box.textContent = 'No entries yet.';
-        return;
-    }
-
-    const info = document.createElement('div');
-    info.textContent = 'Add as correct or Assign to canonical';
-    info.style.marginBottom = '6px';
-    info.style.opacity = '0.85';
-    box.appendChild(info);
-
-    keys.forEach(word=>{
-        const row = document.createElement('div');
-        row.style.padding = '4px 0';
-        row.style.borderBottom = '1px solid #10122f';
-
-        const header = document.createElement('div');
-        header.textContent = word + ' (x' + grouped[word].length + ')';
-        header.style.fontWeight = '600';
-        header.style.marginBottom = '2px';
-        row.appendChild(header);
-
-        const wrap = document.createElement('div');
-
-        const add = document.createElement('button');
-        add.textContent = 'Add as correct';
-        add.style.padding = '2px 6px';
-        add.style.fontSize = '11px';
-        add.style.marginRight = '4px';
-        add.style.cursor = 'pointer';
-        add.style.background = '#34416a';
-        add.style.color = '#fff';
-        add.style.border = '1px solid #483a73';
-        add.style.borderRadius = '3px';
-        add.onclick = ()=>{
-            AC.state.customSet.add(word);
-            AC.saveCustomDict();
-            AC.healDictionaries();
-            AC.state.log = AC.state.log.filter(e=>e.word !== word);
-            AC.saveLog();
-            AC.renderSidebar();
-        };
-        wrap.appendChild(add);
-
-        const assign = document.createElement('button');
-        assign.textContent = 'Assign';
-        assign.style.padding = '2px 6px';
-        assign.style.fontSize = '11px';
-        assign.style.cursor = 'pointer';
-        assign.style.background = '#f9772e';
-        assign.style.color = '#fff';
-        assign.style.border = 'none';
-        assign.style.borderRadius = '3px';
-        assign.style.boxShadow = '0 0 6px rgba(249,119,46,0.6)';
-        assign.onclick = ()=>AC.openMapPanel(word);
-        wrap.appendChild(assign);
-
-        row.appendChild(wrap);
-        box.appendChild(row);
-    });
-};
-
-
-/* ============================
-   RECENT TAB
-   ============================ */
-
-AC.renderRecentTab = function(box){
-    const log = (AC.state.log || [])
-        .slice()
-        .sort((a,b)=>b.when.localeCompare(a.when));
-
-    const info = document.createElement('div');
-    info.textContent = 'Most recent entries:';
-    info.style.marginBottom = '6px';
-    info.style.opacity = '0.85';
-    box.appendChild(info);
-
-    if (!log.length){
-        const t = document.createElement('div');
-        t.textContent = 'No entries yet.';
-        box.appendChild(t);
-        return;
-    }
-
-    log.slice(0,50).forEach(e=>{
-        const row = document.createElement('div');
-        row.style.padding = '4px 0';
-        row.style.borderBottom = '1px solid #10122f';
-
-        const t1 = document.createElement('div');
-        t1.textContent = e.when;
-        t1.style.fontSize = '11px';
-        t1.style.opacity = '0.8';
-        row.appendChild(t1);
-
-        const t2 = document.createElement('div');
-        t2.textContent = e.word;
-        t2.style.fontWeight = '600';
-        row.appendChild(t2);
-
-        if (e.sentence){
-            const t3 = document.createElement('div');
-            t3.textContent = '"' + e.sentence + '"';
-            t3.style.fontSize = '11px';
-            t3.style.opacity = '0.9';
-            row.appendChild(t3);
-        }
-
-        box.appendChild(row);
-    });
-};
-
-
-/* ============================
-   STATS TAB
-   ============================ */
-
-AC.makeStatsText = function(){
-    const log = AC.state.log || [];
-    return 'Total log entries: ' + log.length + '\n'
-         + 'Unique words: ' + new Set(log.map(e=>e.word)).size;
-};
-
-AC.renderStatsTab = function(box){
-    box.textContent = AC.makeStatsText();
-};
-
-
-/* ============================
-   EXPORT TAB
-   ============================ */
-
-AC.exportTXT = function(){
-    const data = (AC.state.log || [])
-        .map(e=>`${e.when} - ${e.word} - ${e.sentence || ''}`)
-        .join('\n');
-
-    const blob = new Blob([data], {type:'text/plain'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'ac_log.txt';
-    a.click();
-};
-
-AC.exportCSV = function(){
-    const rows = (AC.state.log || [])
-        .map(e=>`"${e.when}","${e.word}","${(e.sentence||'').replace(/"/g,'""')}"`)
-        .join('\n');
-
-    const blob = new Blob([rows], {type:'text/csv'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'ac_log.csv';
-    a.click();
-};
-
-AC.renderExportTab = function(box){
-    const txt = document.createElement('button');
-    txt.textContent = 'Download TXT';
-    txt.style.padding = '3px 8px';
-    txt.style.marginRight = '6px';
-    txt.style.cursor = 'pointer';
-    txt.style.background = '#34416a';
-    txt.style.color = '#fff';
-    txt.style.border = '1px solid #483a73';
-    txt.style.borderRadius = '3px';
-    txt.onclick = AC.exportTXT;
-
-    const csv = document.createElement('button');
-    csv.textContent = 'Download CSV';
-    csv.style.padding = '3px 8px';
-    csv.style.cursor = 'pointer';
-    csv.style.background = '#34416a';
-    csv.style.color = '#fff';
-    csv.style.border = '1px solid #483a73';
-    csv.style.borderRadius = '3px';
-    csv.onclick = AC.exportCSV;
-
-    box.appendChild(txt);
-    box.appendChild(csv);
-};
-
-
-/* ============================
-   DICTIONARY TAB
-   ============================ */
-
-AC.renderDictTab = function(box){
-
-    const state = AC.state;
-
-    const info = document.createElement('div');
-    info.textContent = 'Filter & manage custom words:';
-    info.style.marginBottom = '6px';
-    info.style.opacity = '0.85';
-    box.appendChild(info);
-
-    const filter = document.createElement('input');
-    filter.placeholder = 'Filter...';
-    filter.style.width = '100%';
-    filter.style.padding = '6px 8px';
-    filter.style.marginBottom = '6px';
-    filter.style.border = '1px solid #483a73';
-    filter.style.background = '#1e1d49';
-    filter.style.color = '#e5eff';
-    filter.style.borderRadius = '4px';
-    box.appendChild(filter);
-
-    const listBox = document.createElement('div');
-    listBox.style.maxHeight = '40vh';
-    listBox.style.overflowY = 'auto';
-    listBox.style.border = '1px solid #483a73';
-    listBox.style.borderRadius = '4px';
-    listBox.style.padding = '4px 0';
-    box.appendChild(listBox);
-
-    function draw(){
-        const term = filter.value.toLowerCase();
-        listBox.innerHTML = '';
-
-        const arr = Array.from(state.customSet).sort();
-        let shown = 0;
-
-        arr.forEach(w=>{
-            if (term && !w.toLowerCase().includes(term)) return;
-            shown++;
-
-            const row = document.createElement('div');
-            row.style.display = 'flex';
-            row.style.justifyContent = 'space-between';
-            row.style.alignItems = 'center';
-            row.style.padding = '4px 6px';
-
-            const label = document.createElement('span');
-            label.textContent = w;
-            row.appendChild(label);
-
-            const right = document.createElement('span');
-
-            const caps = state.caps;
-            const star = document.createElement('span');
-            star.textContent = caps[w] ? '⭐' : '☆';
-            star.style.cursor = 'pointer';
-            star.style.marginRight = '6px';
-            star.onclick = e=>{
-                e.stopPropagation();
-                if (caps[w]) delete caps[w];
-                else caps[w] = true;
-                AC.saveCaps();
-                AC.renderSidebar();
-            };
-            right.appendChild(star);
-
-            const mapped = state.customMap[w] && state.customMap[w].length;
-            const icon = document.createElement('span');
-            icon.textContent = mapped ? '⚙️' : '⬜';
-            icon.style.marginRight = '8px';
-            right.appendChild(icon);
-
-            const rm = document.createElement('button');
-            rm.textContent = 'Remove';
-            rm.style.padding = '2px 6px';
-            rm.style.fontSize = '11px';
-            rm.style.cursor = 'pointer';
-            rm.style.background = '#702020';
-            rm.style.border = '1px solid #a03333';
-            rm.style.color = '#fff';
-            rm.style.borderRadius = '3px';
-            rm.onclick = e=>{
-                e.stopPropagation();
-                state.customSet.delete(w);
-                delete state.caps[w];
-                AC.saveCustomDict();
-                AC.saveCaps();
-                AC.healDictionaries();
-                AC.renderSidebar();
-            };
-            right.appendChild(rm);
-
-            row.appendChild(right);
-
-            row.onmouseenter = ()=>row.style.background = '#483a73';
-            row.onmouseleave = ()=>row.style.background = 'transparent';
-
-            listBox.appendChild(row);
-        });
-
-        if (!shown){
-            const empty = document.createElement('div');
-            empty.textContent = 'No matches.';
-            empty.style.opacity = '0.85';
-            empty.style.padding = '4px 6px';
-            listBox.appendChild(empty);
-        }
-    }
-
-    filter.addEventListener('input', draw);
-    draw();
-
-
-/* ============================
-   SETTINGS TAB
-   ============================ */
-
-AC.renderSettingsTab = function(box){
-
-    const state = AC.state;
-
-    const title = document.createElement('div');
-    title.textContent = 'Custom dictionary (raw):';
-    title.style.marginBottom = '4px';
-    box.appendChild(title);
-
-    const raw = document.createElement('div');
-    raw.textContent = state.customList.length
-        ? state.customList.join(', ')
-        : '(none)';
-    raw.style.fontSize = '11px';
-    raw.style.opacity = '0.9';
-    raw.style.marginBottom = '10px';
-    box.appendChild(raw);
-
-    const clrLog = document.createElement('button');
-    clrLog.textContent = 'Clear log';
-    clrLog.style.padding = '3px 8px';
-    clrLog.style.marginRight = '6px';
-    clrLog.style.cursor = 'pointer';
-    clrLog.style.background = '#702020';
-    clrLog.style.color = '#fff';
-    clrLog.style.border = '1px solid #a03333';
-    clrLog.style.borderRadius = '3px';
-    clrLog.onclick = ()=>{
-        if (confirm('Clear spelling log?')){
-            state.log = [];
-            AC.saveLog();
-            AC.renderSidebar();
-        }
-    };
-    box.appendChild(clrLog);
-
-    const clrDict = document.createElement('button');
-    clrDict.textContent = 'Clear dictionary';
-    clrDict.style.padding = '3px 8px';
-    clrDict.style.cursor = 'pointer';
-    clrDict.style.background = '#704d20';
-    clrDict.style.color = '#fff';
-    clrDict.style.border = '1px solid #a06d33';
-    clrDict.style.borderRadius = '3px';
-    clrDict.onclick = ()=>{
-        if (confirm('Clear custom dictionary?')){
-            state.customSet = new Set();
-            state.customList = [];
-            AC.saveCustomDict();
-            AC.healDictionaries();
-            AC.renderSidebar();
-        }
-    };
-    box.appendChild(clrDict);
-};
-
-
-/* ============================
-   MAPPING PANEL
-   ============================ */
-
-AC.openMapPanel = function(targetMiss){
-
-    const { map } = AC.buildShell();
-    map.innerHTML = '';
-    map.style.pointerEvents = 'auto';
-    map.style.transform = 'translateX(0)';
-    map.style.opacity = '1';
-
-    const title = document.createElement('div');
-    title.textContent = 'Assign "' + targetMiss + '" to:';
-    title.style.fontWeight = '600';
-    title.style.marginBottom = '6px';
-    map.appendChild(title);
-
-    const hint = document.createElement('div');
-    hint.textContent = 'Search or type a new canonical word/phrase:';
-    hint.style.opacity = '0.85';
-    hint.style.marginBottom = '6px';
-    map.appendChild(hint);
-
-    const inp = document.createElement('input');
-    inp.placeholder = 'Canonical form';
-    inp.style.width = '100%';
-    inp.style.padding = '6px 8px';
-    inp.style.marginBottom = '6px';
-    inp.style.border = '1px solid #483a73';
-    inp.style.borderRadius = '4px';
-    inp.style.background = '#1e1d49';
-    inp.style.color = '#e5eff';
-    inp.style.borderRadius = '4px';
-    map.appendChild(inp);
+  };
+
+  /* =============================
+     STATS TAB
+     ============================= */
+  const renderStats = () => {
+    if (activeTab !== 'stats') return;
+    const unknown = state.log.length;
+    const mapped = Object.keys(state.customMap).length;
+    const customWords = state.customSet.size;
+    content.innerHTML = `
+      <div class="row"><div>Unknown logged</div><div class="pill">${unknown}</div></div>
+      <div class="row"><div>Custom words</div><div class="pill">${customWords}</div></div>
+      <div class="row"><div>Custom mappings</div><div class="pill">${mapped}</div></div>
+    `;
+  };
+
+  /* =============================
+     EXPORT TAB
+     ============================= */
+  const renderExport = () => {
+    if (activeTab !== 'export') return;
+    const payload = { log: state.log, custom: Array.from(state.customSet), map: state.customMap, caps: state.caps };
+    content.innerHTML = '';
+    const ta = document.createElement('textarea');
+    ta.rows = 10; ta.value = JSON.stringify(payload, null, 2);
+    content.appendChild(ta);
+  };
+
+  /* =============================
+     DICTIONARY TAB
+     ============================= */
+  const renderDict = () => {
+    if (activeTab !== 'dict') return;
+    content.innerHTML = '';
+    const addRow = document.createElement('div'); addRow.className='row';
+    const input = document.createElement('input'); input.placeholder='Add word';
+    const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Add';
+    btn.onclick=()=>{ const w=input.value.trim(); if (w.length>1){ state.customSet.add(w); state.customList = Array.from(state.customSet).sort(); rebuildMaps(); input.value=''; renderDict(); } };
+    addRow.append(input,btn); content.appendChild(addRow);
 
     const list = document.createElement('div');
-    list.style.maxHeight = '60vh';
-    list.style.overflowY = 'auto';
-    list.style.border = '1px solid #483a73';
-    list.style.borderRadius = '4px';
-    list.style.padding = '4px 0';
-    list.style.marginBottom = '8px';
-    map.appendChild(list);
+    const allWords = [...new Set([...state.canonicals])].sort();
+    allWords.forEach(word=>{
+      const row=document.createElement('div'); row.className='row';
+      const mapped = Object.values(state.flatMap).includes(word);
+      const star = document.createElement('button'); star.className='btn'; star.textContent = state.caps[word] ? '⭐' : '☆';
+      star.style.width='34px';
+      star.onclick=()=>{ state.caps[word] = !state.caps[word]; saveJSON(STORAGE.CAPS, state.caps); renderDict(); };
+      const label=document.createElement('div'); label.innerHTML=`${mapped?'⚙️':'⬜'} ${word}`;
+      const remove=document.createElement('button'); remove.className='btn'; remove.textContent='✖';
+      remove.style.width='34px';
+      remove.onclick=()=>{ if (state.customSet.has(word)){ state.customSet.delete(word); state.customList=Array.from(state.customSet).sort(); rebuildMaps(); renderDict(); } };
+      row.append(label,star,remove);
+      list.appendChild(row);
+    });
+    content.appendChild(list);
+  };
 
-    function draw(filter){
-        list.innerHTML = '';
-        const canon = AC.state.canonicals || [];
-        const f = (filter || '').toLowerCase();
-        let count = 0;
-
-        canon.forEach(w=>{
-            if (f && !w.toLowerCase().includes(f)) return;
-
-            const row = document.createElement('div');
-            row.textContent = w;
-            row.style.padding = '4px 6px';
-            row.style.cursor = 'pointer';
-            row.onmouseenter = ()=>row.style.background = '#483a73';
-            row.onmouseleave = ()=>row.style.background = 'transparent';
-            row.onclick = ()=>inp.value = w;
-            list.appendChild(row);
-            count++;
-        });
-
-        if (!count){
-            const empty = document.createElement('div');
-            empty.textContent = 'No matches.';
-            empty.style.padding = '4px 6px';
-            empty.style.opacity = '0.85';
-            list.appendChild(empty);
-        }
-    }
-
-    draw('');
-    inp.addEventListener('input', ()=>draw(inp.value));
-
-    const btnRow = document.createElement('div');
-    btnRow.style.marginTop = '4px';
-    map.appendChild(btnRow);
-
-    const assign = document.createElement('button');
-    assign.textContent = 'Assign';
-    assign.style.padding = '4px 8px';
-    assign.style.cursor = 'pointer';
-    assign.style.background = '#f9772e';
-    assign.style.color = '#fff';
-    assign.style.border = 'none';
-    assign.style.borderRadius = '4px';
-    assign.style.marginRight = '6px';
-    assign.onclick = ()=>{
-        const canonical = inp.value.trim();
-        if (!canonical) return;
-        AC.assignMissFromDict(targetMiss, canonical);
-        AC.closeMapPanel();
-        AC.renderSidebar();
-    };
-    btnRow.appendChild(assign);
-
-    const cancel = document.createElement('button');
-    cancel.textContent = 'Cancel';
-    cancel.style.padding = '4px 8px';
-    cancel.style.cursor = 'pointer';
-    cancel.style.background = '#1e1d49';
-    cancel.style.color = '#fff';
-    cancel.style.border = '1px solid #777';
-    cancel.style.borderRadius = '4px';
-    cancel.onclick = ()=>AC.closeMapPanel();
-    btnRow.appendChild(cancel);
-};
-
-
-AC.closeMapPanel = function(){
-    const map = document.getElementById('ac-map-panel');
-    if (!map) return;
-    map.style.pointerEvents = 'none';
-    map.style.transform = 'translateX(100%)';
-    map.style.opacity = '0';
-};
-
-
-/* ============================
-   LEVEL 12 - STYLES
-   ============================ */
-
-AC.injectStyles = function(){
-    if (document.getElementById('ac-style')) return;
-
-    const st = document.createElement('style');
-    st.id = 'ac-style';
-
-    st.textContent = `
-        #ac-root * {
-            box-sizing: border-box;
-            font-family: Arial, sans-serif;
-        }
-        #ac-sidebar::-webkit-scrollbar,
-        #ac-map-panel::-webkit-scrollbar {
-            width: 6px;
-        }
-        #ac-sidebar::-webkit-scrollbar-thumb,
-        #ac-map-panel::-webkit-scrollbar-thumb {
-            background: #34416a;
-            border-radius: 3px;
-        }
-        #ac-sidebar::-webkit-scrollbar-track,
-        #ac-map-panel::-webkit-scrollbar-track {
-            background: #1e1d49;
-        }
+  /* =============================
+     SETTINGS TAB
+     ============================= */
+  const renderSettings = () => {
+    content.innerHTML = `
+      <div class="row"><div>Version</div><div class="pill">4</div></div>
+      <small>Unified autocorrect engine with logging and mapping tools.</small>
     `;
+  };
 
-    document.head.appendChild(st);
-};
+  /* =============================
+     MAPPING PANEL
+     ============================= */
+  const mapPanel = document.createElement('div');
+  mapPanel.id = 'ac-map-panel';
+  mapPanel.innerHTML = `
+    <header><span>Assign Mapping</span><button class="btn" style="width:auto;padding:4px 8px;">Close</button></header>
+    <div style="padding:8px 10px;display:flex;gap:6px;align-items:center;">
+      <input id="ac-map-from" placeholder="Misspelling" />
+    </div>
+    <div style="padding:0 10px 6px 10px;"><input id="ac-map-filter" placeholder="Filter canonicals" /></div>
+    <div id="ac-map-list"></div>
+    <div id="ac-map-actions"><button class="btn" id="ac-map-save">Save</button><button class="btn" id="ac-map-cancel">Cancel</button></div>
+  `;
+  document.body.appendChild(mapPanel);
 
+  const mapCloseBtn = mapPanel.querySelector('header button');
+  const mapFrom = mapPanel.querySelector('#ac-map-from');
+  const mapFilter = mapPanel.querySelector('#ac-map-filter');
+  const mapList = mapPanel.querySelector('#ac-map-list');
+  const mapSave = mapPanel.querySelector('#ac-map-save');
+  const mapCancel = mapPanel.querySelector('#ac-map-cancel');
+  let mapSelection = null;
 
-/* ============================
-   LEVEL 13 - BOOTSTRAP
-   ============================ */
+  const renderMapList = () => {
+    const q = mapFilter.value.trim().toLowerCase();
+    mapList.innerHTML = '';
+    state.canonicals.filter(c => !q || c.toLowerCase().includes(q)).forEach(c => {
+      const b = document.createElement('button');
+      b.textContent = c;
+      b.classList.toggle('active', mapSelection === c);
+      b.onclick = () => { mapSelection = c; renderMapList(); };
+      mapList.appendChild(b);
+    });
+  };
 
-AC.bootstrap = function(){
-    AC.injectStyles();
-    AC.healDictionaries();
-    AC.rebuildMaps();
-    AC.cleanNumericLogs();
-    AC.ensureToggleButton();
-    AC.scanEditables();  // MUST be after attachToEditable definition
-    AC.buildShell();
-};
+  const openMapping = (word) => {
+    mapFrom.value = word || '';
+    mapFilter.value = '';
+    mapSelection = state.canonicals[0] || '';
+    renderMapList();
+    mapPanel.classList.add('open');
+  };
 
-/* RUN IMMEDIATELY */
-AC.bootstrap();
+  const closeMapping = () => { mapPanel.classList.remove('open'); };
+
+  mapFilter.addEventListener('input', renderMapList);
+  mapCloseBtn.onclick = closeMapping;
+  mapCancel.onclick = closeMapping;
+  mapSave.onclick = () => {
+    const miss = mapFrom.value.trim();
+    if (!miss || !mapSelection) return;
+    state.customMap[miss] = mapSelection;
+    rebuildMaps();
+    renderDict();
+    renderLog();
+    closeMapping();
+  };
+
+  /* =============================
+     MUTATION OBSERVER
+     ============================= */
+  const observer = new MutationObserver(()=>scanEditors());
+  observer.observe(document.body, { childList:true, subtree:true });
+  state.observer = observer;
+  scanEditors();
+
+  // Initial render
+  renderLog();
 
 })();
