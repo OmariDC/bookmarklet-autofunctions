@@ -1,13 +1,2 @@
-# Required so .js files are served correctly
-kramdown: false
-markdown: false
-highlighter: none
-
-# Prevent GitHub Pages from wrapping JS files
 include:
   - "*.js"
-  - "*.json"
-  - "*.map"
-  - Reg-Check.js
-  - Auto-Correct.js
-  - Auto-AcceptLP.js
