@@ -52,7 +52,7 @@ AC.state = {
   listeners: new WeakMap(),
   observer: null,
   open: false,
-  lastCorrection: null
+  lastCorrections: []
 };
 
 // base canonical dictionary and misspellings
@@ -116,7 +116,10 @@ AC.isSentenceBoundary = function(text) {
 AC.applyCase = function(canonical, sample, startOfSentence) {
   if (AC.state.caps[canonical]) return canonical;
   if (!sample) return startOfSentence ? canonical.charAt(0).toUpperCase() + canonical.slice(1) : canonical;
-  if (sample === sample.toUpperCase()) return canonical.toUpperCase();
+  const letters = sample.match(/[A-Za-z]/g) || [];
+  const upperCount = (sample.match(/[A-Z]/g) || []).length;
+  const ratio = letters.length === 0 ? 0 : upperCount / letters.length;
+  if (ratio > 0.5) return canonical.toUpperCase();
   if (sample[0] === sample[0].toUpperCase()) return canonical.charAt(0).toUpperCase() + canonical.slice(1);
   if (startOfSentence) return canonical.charAt(0).toUpperCase() + canonical.slice(1);
   return canonical;
@@ -289,14 +292,39 @@ AC.pruneLog();
  ***************************************************/
 
 // capture caret position
+AC.nodeInCursor = function(node) {
+  if (!node) return false;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  return !!(node && node.closest && node.closest('.ql-cursor'));
+};
+
 AC.getCaretIndex = function(root) {
   const sel = window.getSelection();
   if (!sel || !sel.rangeCount) return -1;
   try {
-    const range = sel.getRangeAt(0).cloneRange();
+    const range = sel.getRangeAt(0);
+    if (AC.nodeInCursor(range.startContainer)) {
+      const tmp = document.createRange();
+      tmp.selectNodeContents(root);
+      const cursorEl = range.startContainer.closest ? range.startContainer.closest('.ql-cursor') : range.startContainer.parentElement.closest('.ql-cursor');
+      if (cursorEl) tmp.setEndBefore(cursorEl);
+      return tmp.toString().length;
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => AC.nodeInCursor(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+    });
+    let idx = 0;
+    let current = walker.nextNode();
+    while (current) {
+      if (current === range.startContainer) {
+        return idx + range.startOffset;
+      }
+      idx += current.textContent.length;
+      current = walker.nextNode();
+    }
     const preRange = range.cloneRange();
     preRange.selectNodeContents(root);
-    preRange.setEnd(sel.focusNode, sel.focusOffset);
+    preRange.setEnd(range.startContainer, range.startOffset);
     return preRange.toString().length;
   } catch (err) {
     return -1;
@@ -305,7 +333,9 @@ AC.getCaretIndex = function(root) {
 
 AC.restoreCaretIndex = function(root, index) {
   if (index < 0) return;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => AC.nodeInCursor(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  });
   let current = walker.nextNode();
   let remaining = index;
   while (current) {
@@ -352,12 +382,18 @@ AC.applyCanonical = function(token, atSentenceStart) {
   return { replacement, canonical, time: false };
 };
 
+AC.escapeRegex = function(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\$&');
+};
+
 AC.matchMultiWord = function(text) {
   const lower = text.toLowerCase();
   for (let i = 0; i < AC.state.multi.length; i++) {
     const pair = AC.state.multi[i];
-    if (lower.endsWith(pair.src)) {
-      const startIndex = lower.lastIndexOf(pair.src);
+    const pattern = new RegExp(`\\b${AC.escapeRegex(pair.src)}$`);
+    const match = lower.match(pattern);
+    if (match) {
+      const startIndex = lower.search(pattern);
       return { start: startIndex, src: pair.src, tgt: pair.tgt };
     }
   }
@@ -365,15 +401,22 @@ AC.matchMultiWord = function(text) {
 };
 
 AC.recordUndoState = function(root, oldText, newText, caret) {
-  AC.state.lastCorrection = { root, oldText, newText, caret };
+  AC.state.lastCorrections.push({ root, oldText, newText, caret });
+  if (AC.state.lastCorrections.length > 2) AC.state.lastCorrections.shift();
 };
 
 AC.undoLast = function() {
-  const info = AC.state.lastCorrection;
+  const info = AC.state.lastCorrections.pop();
   if (!info || !info.root || !info.root.isConnected) return;
-  info.root.innerText = info.oldText;
+  AC.replaceTextContent(info.root, info.oldText);
   AC.restoreCaretIndex(info.root, info.caret);
-  AC.state.lastCorrection = null;
+};
+
+AC.replaceTextContent = function(root, text) {
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.deleteContents();
+  range.insertNode(document.createTextNode(text));
 };
 
 AC.applyCorrections = function(root, triggerChar) {
@@ -382,9 +425,15 @@ AC.applyCorrections = function(root, triggerChar) {
   const text = root.innerText;
   const { before, after } = AC.splitTextByCaret(text, caretPos);
 
-  const trailingMatch = before.match(/([\s.!?]*)$/);
-  const trailing = trailingMatch ? trailingMatch[1] : '';
-  const trimmedBefore = before.slice(0, before.length - trailing.length);
+  const newlineTrailMatch = before.match(/(\n+)$/);
+  const newlineTrail = newlineTrailMatch ? newlineTrailMatch[1] : '';
+  const withoutNewline = newlineTrail ? before.slice(0, before.length - newlineTrail.length) : before;
+  const spaceTrailMatch = withoutNewline.match(/[ \t]+$/);
+  const spaceTrail = spaceTrailMatch ? spaceTrailMatch[1] : '';
+  const withoutSpaces = spaceTrail ? withoutNewline.slice(0, withoutNewline.length - spaceTrail.length) : withoutNewline;
+  const punctTrailMatch = withoutSpaces.match(/([.!?]+)$/);
+  const punctTrail = punctTrailMatch ? punctTrailMatch[1] : '';
+  const trimmedBefore = punctTrail ? withoutSpaces.slice(0, withoutSpaces.length - punctTrail.length) : withoutSpaces;
   const wordMatch = trimmedBefore.match(/([\w'&]+)$/);
   const word = wordMatch ? wordMatch[1] : '';
   if (!word) return;
@@ -402,7 +451,7 @@ AC.applyCorrections = function(root, triggerChar) {
     const preSegment = trimmedBefore.slice(0, multiMatch.start);
     const originalSegment = trimmedBefore.slice(multiMatch.start, trimmedBefore.length);
     const corrected = AC.applyCase(multiMatch.tgt, originalSegment, sentenceStart);
-    const rebuiltBefore = preSegment + corrected + trailing;
+    const rebuiltBefore = preSegment + corrected + punctTrail + spaceTrail + newlineTrail;
     updatedText = rebuiltBefore + after;
     newCaret = rebuiltBefore.length;
     applied = true;
@@ -413,16 +462,16 @@ AC.applyCorrections = function(root, triggerChar) {
       const correctedWord = correction.replacement;
       const autoCapI = correctedWord === 'i' ? 'I' : correctedWord;
       const finalWord = sentenceStart ? autoCapI.charAt(0).toUpperCase() + autoCapI.slice(1) : autoCapI;
-      const rebuiltBefore = prefix + finalWord + trailing;
+      const rebuiltBefore = prefix + finalWord + punctTrail + spaceTrail + newlineTrail;
       updatedText = rebuiltBefore + after;
-      newCaret = (prefix + finalWord + trailing).length;
+      newCaret = (prefix + finalWord + punctTrail + spaceTrail + newlineTrail).length;
       applied = true;
       if (!AC.state.recent.includes(finalWord)) AC.state.recent.push(finalWord);
     } else {
       const autoI = word === 'i' ? 'I' : null;
       if (autoI) {
         const prefix = prefixText;
-        const rebuiltBefore = prefix + 'I' + trailing;
+        const rebuiltBefore = prefix + 'I' + punctTrail + spaceTrail + newlineTrail;
         updatedText = rebuiltBefore + after;
         newCaret = rebuiltBefore.length;
         applied = true;
@@ -433,7 +482,7 @@ AC.applyCorrections = function(root, triggerChar) {
 
   if (!applied) return;
   AC.recordUndoState(root, text, updatedText, caretPos);
-  root.innerText = updatedText;
+  AC.replaceTextContent(root, updatedText);
   AC.restoreCaretIndex(root, newCaret);
 };
 
@@ -500,6 +549,11 @@ AC.observeMutations = function() {
   if (AC.state.observer) return;
   const observer = new MutationObserver(mutations => {
     mutations.forEach(m => {
+      if (m.type === 'attributes' && m.attributeName === 'class' && m.target instanceof HTMLElement) {
+        if (m.target.matches(AC.editorSelector)) {
+          AC.bindEditor(m.target);
+        }
+      }
       m.addedNodes.forEach(node => {
         if (!(node instanceof HTMLElement)) return;
         if (node.matches && node.matches(AC.editorSelector)) {
@@ -509,7 +563,7 @@ AC.observeMutations = function() {
       });
     });
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   AC.state.observer = observer;
 };
 
