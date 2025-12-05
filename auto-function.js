@@ -414,10 +414,19 @@ AC.undoLast = function() {
 };
 
 AC.replaceTextContent = function(root, text) {
+  const cursors = [];
+  root.querySelectorAll && root.querySelectorAll('.ql-cursor').forEach(node => {
+    cursors.push({ node, parent: node.parentNode, next: node.nextSibling });
+  });
   const range = document.createRange();
   range.selectNodeContents(root);
   range.deleteContents();
   range.insertNode(document.createTextNode(text));
+  cursors.forEach(ref => {
+    if (!ref.parent) return;
+    if (ref.next && ref.next.parentNode === ref.parent) ref.parent.insertBefore(ref.node, ref.next);
+    else ref.parent.appendChild(ref.node);
+  });
 };
 
 AC.applyCorrections = function(root, triggerChar) {
